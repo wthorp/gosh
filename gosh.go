@@ -3,7 +3,9 @@ package main
 func main() {
 	NewBlock(`
 	# be polite
-	echo Hello World
+	set yinz = World
+	echo Hello ${yinz}
+	
 	mkdir test
 
 	// run some executable programs
@@ -11,8 +13,7 @@ func main() {
 	git status
 	ls
 
-	# okay, I was kidding about being polite
 	rmdir test
-	echo Goodbye Cruel World
+	echo Goodbye ${yinz}
 	`).Run()
 }

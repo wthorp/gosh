@@ -13,7 +13,7 @@ var lineRegEx = regexp.MustCompile(`[^\s"]+|"([^"]*)"`)
 var defaultFuncs = map[string](func(*Block, string) error){
 	"cd": (*Block).Cd, "echo": (*Block).Echo, "mkdir": (*Block).MkDir,
 	"pushd": (*Block).Pushd, "popd": (*Block).Popd, "rm": (*Block).Rm,
-	"rmdir": (*Block).RmDir}
+	"rmdir": (*Block).RmDir, "set": (*Block).Set}
 var defaultErr = func(err error) {
 	fmt.Printf("FAIL: %+v", err)
 	os.Exit(1)
@@ -56,6 +56,11 @@ func (b *Block) Run() {
 		if cmd == "" || strings.HasPrefix(cmd, "//") || strings.HasPrefix(cmd, "#") {
 			continue
 		}
+		cmd = os.Expand(cmd, func(s string) string {
+			e, _ := b.env[s]
+			return e
+		})
+
 		space := strings.Index(cmd, " ")
 		firstWord := cmd
 		otherWords := ""
@@ -93,10 +98,6 @@ func (b *Block) Echo(text string) error {
 
 // Exec runs a program on the operating system.
 func (b *Block) Exec(input string) error {
-	input = os.Expand(input, func(s string) string {
-		e, _ := b.env[s]
-		return e
-	})
 	params := lineRegEx.FindAllString(input, -1)
 	cmd := params[0]
 	args := []string{}
