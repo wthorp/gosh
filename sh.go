@@ -1,4 +1,4 @@
-package main
+package gosh
 
 import (
 	"fmt"
@@ -8,6 +8,9 @@ import (
 	"regexp"
 	"strings"
 )
+
+// Calls is a type alias used to call methods in Sh().
+type Calls map[string](func(*Block, string) error)
 
 var lineRegEx = regexp.MustCompile(`[^\s"]+|"([^"]*)"`)
 var defaultFuncs = map[string](func(*Block, string) error){
@@ -28,10 +31,9 @@ type Block struct {
 	env   map[string]string
 }
 
-// NewBlock creates a new execution block context.
-func NewBlock(cmdBlock string) *Block {
+// Run creates a new execution block context.
+func Run(cmdBlock string, funcs map[string](func(*Block, string) error)) {
 	workingDir, _ := os.Getwd()
-	funcs := make(map[string](func(*Block, string) error))
 	for k, v := range defaultFuncs {
 		funcs[k] = v
 	}
@@ -40,13 +42,14 @@ func NewBlock(cmdBlock string) *Block {
 		i := strings.Index(pair, "=")
 		env[pair[0:i]] = pair[i+1:]
 	}
-	return &Block{
+	block := Block{
 		cmds:  strings.Split(strings.Trim(cmdBlock, "\n"), "\n"),
 		dirs:  []string{workingDir},
 		funcs: funcs,
 		onErr: defaultErr,
 		env:   env,
 	}
+	block.Run()
 }
 
 // Run executes all commands defined in a block.
