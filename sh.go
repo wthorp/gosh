@@ -143,7 +143,7 @@ func (b *Block) Rm(file string) error {
 
 // RmDir removes a directory from the file system.
 func (b *Block) RmDir(dir string) error {
-	return os.Remove(dir)
+	return os.RemoveAll(dir)
 }
 
 // Set adds or removes a named string to the block's environment.
