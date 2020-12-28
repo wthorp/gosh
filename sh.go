@@ -87,12 +87,6 @@ func (b *Block) Run() {
 	}
 }
 
-// Cd changes out of the current directory.
-func (b *Block) Cd(dir string) error {
-	b.dirs[0] = filepath.Join(b.dirs[0], dir)
-	return nil
-}
-
 // Echo writes to standard output.
 func (b *Block) Echo(text string) error {
 	_, err := fmt.Println(text)
@@ -115,6 +109,17 @@ func (b *Block) Exec(input string) error {
 		c.Env = append(c.Env, k+"="+v)
 	}
 	return c.Run()
+}
+
+// Getwd returns the current directory.
+func (b *Block) Getwd() (dir string) {
+	return b.dirs[0]
+}
+
+// Cd changes out of the current directory.
+func (b *Block) Cd(dir string) error {
+	b.dirs[0] = filepath.Join(b.dirs[0], dir)
+	return nil
 }
 
 // MkDir adds a directory to the file system.
