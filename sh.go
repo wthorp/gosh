@@ -119,7 +119,7 @@ func (b *Block) Exec(input string) error {
 
 // MkDir adds a directory to the file system.
 func (b *Block) MkDir(dir string) error {
-	return os.MkdirAll(dir, 0600)
+	return os.MkdirAll(dir, 0744)
 }
 
 // Pushd changes out of the current directory to the previous directory.
