@@ -7,6 +7,11 @@ import (
 )
 
 func main() {
+	gosh.Go()
+}
+
+// GoodStuff is target that shows how to use gosh.Run().
+func GoodStuff() {
 	gosh.Run(`
 	# be polite
 	set yinz = World
@@ -25,7 +30,13 @@ func main() {
 	`, gosh.Calls{"goHello": goHello})
 }
 
+// goHello is a gosh.Call() that says hello from Go.
 func goHello(*gosh.Block, string) error {
 	fmt.Println(" ... and hello from Go!")
 	return nil
+}
+
+// BoringHello is a target that doesn't use gosh.Run().
+func BoringHello(name string) {
+	fmt.Println(" ... and hello %s from Go!", name)
 }
