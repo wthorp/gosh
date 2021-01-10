@@ -81,6 +81,8 @@ func alterGoSource(goSrc string, astFile *ast.File) (string, error) {
 		}
 		return !isFunc
 	})
+	//todo: work around fmt.Printf below
+	hardWire += "\tdefault:\n\t\tfmt.Printf(\"Target %s not found\\n\", gosh.Args[1])\n"
 	hardWire += "\t}\n"
 
 	findGoshCalls(astFile)
@@ -104,7 +106,6 @@ func runTemporaryGoFile(goCode string) error {
 	//f.Close()
 	ioutil.WriteFile("temp.go", []byte(goCode), 0600)
 
-	fmt.Printf("Running things!\n")
 	args := append([]string{"run", "temp.go"}, os.Args[1:]...)
 	cmd := exec.Command("go", args...)
 	cmd.Stdout = os.Stdout
