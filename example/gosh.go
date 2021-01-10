@@ -7,7 +7,7 @@ import (
 )
 
 func main() {
-	gosh.Go()
+	gosh.Autowire()
 }
 
 // GoodStuff is target that shows how to use gosh.Run().
