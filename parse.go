@@ -5,6 +5,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"go/types"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,6 +23,7 @@ func Go() error {
 		return err
 	}
 	if !hasTarget {
+		findGoshCalls(funcs)
 		return showUsage(goSrc, funcs)
 	}
 	// todo: replace main w/ generated target invoker
@@ -51,21 +53,15 @@ func showUsage(goSrc string, funcs []*ast.FuncDecl) error {
 
 // findGoshCalls filters a list of functions to ones suitable as gosh calls.
 func findGoshCalls(funcs []*ast.FuncDecl) []*ast.FuncDecl {
-	// Todo: figure out type checker
-	// info := types.Info{Types: make(map[ast.Expr]types.TypeAndValue)}
-	// _, err = (&types.Config{}).Check("gosh", fs, []*ast.File{astFile}, &info)
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
 	goshCalls := make([]*ast.FuncDecl, 0)
 	for _, astFunc := range funcs {
-
-		if len(astFunc.Type.Params.List) == 0 {
+		params := astFunc.Type.Params.List
+		if len(params) == 0 {
 			continue
 		}
-		// todo: filter for p0 is *gosh.Block
-		// p0 := astFunc.Type.Params.List[0]
-		// fmt.Printf("%+v\n", info.Types[p0.Type].Type)
+		if types.ExprString(params[0].Type) != "*gosh.Block" {
+			continue
+		}
 	}
 	return goshCalls
 }
