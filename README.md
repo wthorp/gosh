@@ -78,10 +78,6 @@ Note the assumumption that there are no functions which Gosh scripts _must not_ 
  - declarative dependencies (like Make)
    - its assumed that calling Go functions covers the 85% use case
    - `sync.Once()` and infinite-loop checks are easy imperative fixes
- - differentiating which functions cannot be called from GoSh script
-   - it must linked into the Go code, and mapped so it can be resolved by name
-   - if `time.Now()` could be wired up there's likely no strong reason to prevent it
-   - if `time.utcTime()`, unexported, were somehow wired up... well that's okay too
  - support for calling arbitraty function in external modules
    - if external function needs to be supported, it can be wrapped in an appropriate local function 
   
