@@ -2,18 +2,55 @@
 
 GoSh makes it easy to write command-running scripts from Go code
 
-## Design
-
 ### Goals:
  - author multiline, easy to write, command-running scripts from Go code
  - allow multiple scripts to be exist in the same file, similar to make
  - allow scripts to run concurrently without working directory concerns
-## The design crux:
+
+## Using GoSh Scripts
+
+The basis of GoSh is that it can run multi-line blocks of code.  
+```
+func main() {	
+	gosh.Run(`
+		set yinz = World
+		echo Hello ${yinz}
+		git diff
+	`)
+}
+```
+
+The built-in scripting support is deliberately low on features, focused mostly on working directory support.  This allows multiple execution environments to be run in parallel.  GoSh has the following Shell-like commands built in, but it's easy to add your own:
+
+ - cd : change the working directory
+ - echo : write to the console
+ - mkdir : create a directory
+ - pushd : change the working directory, remembering the old
+ - popd : restore the last remembered directory
+ - rm : remove a file
+ - rmdir : remove a directory
+ - set : save text as a variable
+
+See the (examples directory)[./tree/main/example] to get a better feel for usage.
+
+## Using Multiple Script support
+
+Its convenient when working in a new code-base, to understand commonly run commands in that code-base.  Gosh supports having multiple scripts in the same file, and invoked via command-line parameters.  GoSh makes this easy:
+
+```
+func main() {	
+	gosh.MultiTarget()
+}
+```
+
+Running a Go program that calls `MultiTarget()` will display usage information and a description of available targets if run without command-line parameters.
+
+## Design
 
 Gosh allows interaction with Go functions in one of two ways:
 
 1. Calling Go functions from Gosh scripts within Go code
-2. Calling Go functions from Go progams via the command line (CLI)
+2. Calling Go functions within Go code via the command line (CLI)
 
 Note the assumumption that there are no functions which Gosh scripts _must not_ call; mapping some or all functions are currently equally valid solutions.  The notable options to automatically map Go functions with their string names include:
 
@@ -49,42 +86,6 @@ Note the assumumption that there are no functions which Gosh scripts _must not_ 
  - support for calling arbitraty function in external modules
    - if external function needs to be supported, it can be wrapped in an appropriate local function 
   
-## Using GoSh Scripts
-
-The basis of GoSh is that it can run multi-line blocks of code.  
-```
-func main() {	
-	gosh.Run(`
-	set yinz = World
-	echo Hello ${yinz}
-	`)
-}
-```
-
-The built-in scripting support is deliberately low on features, focused mostly on working directory support.  This allows multiple execution environments to be run in parallel.  GoSh has the following Shell-like commands built in, but it's easy to add your own:
-
- - cd : change the working directory
- - echo : write to the console
- - mkdir : create a directory
- - pushd : change the working directory, remembering the old
- - popd : restore the last remembered directory
- - rm : remove a file
- - rmdir : remove a directory
- - set : save text as a variable
-
-See the (examples directory)[./tree/main/example] to get a better feel for usage.
-
-## Using Multiple Script support
-
-Its convenient when working in a new code-base, to understand commonly run commands in that code-base.  Gosh supports having multiple scripts in the same file, and invoked via command-line parameters.  GoSh makes this easy:
-
-```
-func main() {	
-	gosh.MultiTarget()
-}
-```
-
-Running a Go program that calls `MultiTarget()` will display usage information and a description of available targets if run without command-line parameters.
 
 ## Todos:
  - combining all Call and Target logic
