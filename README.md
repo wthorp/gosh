@@ -2,7 +2,7 @@
 
 GoSh makes it easy to write command-running scripts from Go code:
  - author multiline, easy to write, command-running scripts from Go code
- - invoke different scripts from the same file, similar to Make
+ - invoke different scripts from the same file, similar to Make or Just
  - run scripts concurrently without working directory or environment contention
 
 ## Using GoSh Scripts
@@ -18,7 +18,7 @@ func main() {
 }
 ```
 
-The built-in scripting support is deliberately low on features, focused mostly on working directory support.  This allows multiple execution environments to be run in parallel.  GoSh has the following Shell-like commands built in, but it's easy to add your own:
+GoSh has the following Shell-like commands built in, but it's easy to add your own:
 
  - cd : change the working directory
  - echo : write to the console
@@ -29,11 +29,9 @@ The built-in scripting support is deliberately low on features, focused mostly o
  - rmdir : remove a directory
  - set : save text as a variable
 
-See the [examples directory](./tree/main/example) to get a better feel for usage.
-
 ## Using Multiple Script support
 
-Its convenient when working in a new code-base, to understand commonly run commands in that code-base.  Gosh supports having multiple scripts in the same file, and invoked via command-line parameters.  GoSh makes this easy:
+Gosh automatically creates CLI mapping, supporting multiple targets or recipes in a single file:
 
 ```
 func main() {	
@@ -41,7 +39,9 @@ func main() {
 }
 ```
 
-Running a Go program that calls `MultiTarget()` will display usage information and a description of available targets if run without command-line parameters.
+This will display usage information and available targets if run without command-line parameters.
+
+See the [examples directory](./tree/main/example) to get a better feel for usage.
 
 ## Design
 
@@ -55,6 +55,7 @@ Note the assumumption that there are no functions which Gosh scripts _must not_ 
 1. Programatically create mapping from source code at runtime
     - Find the source code, alter it, compile it, and run it again
     - Requires only "safe" Go code, though the idea itself feels questionable
+    - Always requires Go source, or would require a special command to build and executable
     - Allows running unexported Go functions, making uppercase the intuitive way to define CLI calls 
     - Allows access to code comments for reporting CLI usage
 2. Programatically create mapping via reflection at runtime
