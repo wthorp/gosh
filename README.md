@@ -78,7 +78,7 @@ Note the assumumption that there are no functions which Gosh scripts _must not_ 
  - declarative dependencies (like Make)
    - its assumed that calling Go functions covers the 85% use case
    - `sync.Once()` and infinite-loop checks are easy imperative fixes
- - support for calling arbitraty function in external modules
+ - support for calling arbitrary functions in external modules
    - if external function needs to be supported, it can be wrapped in an appropriate local function 
   
 
