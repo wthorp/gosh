@@ -1,20 +1,19 @@
 # GoSh
 
-GoSh is a command-runner for Go, designed as a simpler alternative to bash/make scripts.
+GoSh makes it easy to write command-running scripts from Go code
 
 ## Design
 
 ### Goals:
- - mix multiline, easy to write program execution with standard Go code execution 
+ - author multiline, easy to write, command-running scripts from Go code
  - allow multiple scripts to be exist in the same file, similar to make
  - allow scripts to run concurrently without working directory concerns
-
 ## The design crux:
 
 Gosh allows interaction with Go functions in one of two ways:
 
 1. Calling Go functions from Gosh scripts within Go code
-2. Calling Go functions from Go progams via the command line (CLI), either using compiled executables or `go run`
+2. Calling Go functions from Go progams via the command line (CLI)
 
 Note the assumumption that there are no functions which Gosh scripts _must not_ call; mapping some or all functions are currently equally valid solutions.  The notable options to automatically map Go functions with their string names include:
 
@@ -55,10 +54,10 @@ Note the assumumption that there are no functions which Gosh scripts _must not_ 
 The basis of GoSh is that it can run multi-line blocks of code.  
 ```
 func main() {	
-	gosh.Run(``
+	gosh.Run(`
 	set yinz = World
 	echo Hello ${yinz}
-	``)
+	`)
 }
 ```
 
@@ -94,5 +93,6 @@ Running a Go program that calls `MultiTarget()` will display usage information a
  - more research on not adding cruft to modules
  - add support for non-local targets like Docker or SSH
  - look at [Just](https://github.com/casey/just)
+ - see if there's a way to hack `go run` at runtime to return results correctly
 
 GoSh is pronounced 'gosh' if you like it, otherwise 'gauche'.
