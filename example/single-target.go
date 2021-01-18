@@ -38,5 +38,5 @@ func goHello(*gosh.Block, string) error {
 
 // BoringHello is a target that doesn't use gosh.Run().
 func BoringHello(name string) {
-	fmt.Println(" ... and hello %s from Go!", name)
+	fmt.Printf(" ... and hello %s from Go!\n", name)
 }
