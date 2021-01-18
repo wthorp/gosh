@@ -1,11 +1,9 @@
 # GoSh
 
-GoSh makes it easy to write command-running scripts from Go code
-
-### Goals:
+GoSh makes it easy to write command-running scripts from Go code:
  - author multiline, easy to write, command-running scripts from Go code
- - allow multiple scripts to be exist in the same file, similar to make
- - allow scripts to run concurrently without working directory concerns
+ - invoke different scripts from the same file, similar to Make
+ - run scripts concurrently without working directory or environment contention
 
 ## Using GoSh Scripts
 
@@ -31,7 +29,7 @@ The built-in scripting support is deliberately low on features, focused mostly o
  - rmdir : remove a directory
  - set : save text as a variable
 
-See the (examples directory)[./tree/main/example] to get a better feel for usage.
+See the [examples directory](./tree/main/example) to get a better feel for usage.
 
 ## Using Multiple Script support
 
