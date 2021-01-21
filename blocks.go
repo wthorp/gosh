@@ -5,18 +5,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 )
 
-// Calls is a type alias used to call methods in Sh().
-type Calls map[string](func(*Block, string) error)
-
 var lineRegEx = regexp.MustCompile(`[^\s"]+|"([^"]*)"`)
-var defaultFuncs = map[string](func(*Block, string) error){
-	"cd": (*Block).Cd, "echo": (*Block).Echo, "mkdir": (*Block).MkDir,
-	"pushd": (*Block).Pushd, "popd": (*Block).Popd, "rm": (*Block).Rm,
-	"rmdir": (*Block).RmDir, "set": (*Block).Set}
 var defaultErr = func(err error) {
 	fmt.Printf("FAIL: %+v", err)
 	os.Exit(1)
@@ -26,17 +20,13 @@ var defaultErr = func(err error) {
 type Block struct {
 	cmds  []string
 	dirs  []string
-	funcs map[string](func(*Block, string) error)
 	onErr func(error)
 	env   map[string]string
 }
 
 // Run creates a new execution block context.
-func Run(cmdBlock string, funcs map[string](func(*Block, string) error)) {
+func Run(cmdBlock string) {
 	workingDir, _ := os.Getwd()
-	for k, v := range defaultFuncs {
-		funcs[k] = v
-	}
 	env := make(map[string]string, len(os.Environ()))
 	for _, pair := range os.Environ() {
 		i := strings.Index(pair, "=")
@@ -45,15 +35,20 @@ func Run(cmdBlock string, funcs map[string](func(*Block, string) error)) {
 	block := Block{
 		cmds:  strings.Split(strings.Trim(cmdBlock, "\n"), "\n"),
 		dirs:  []string{workingDir},
-		funcs: funcs,
 		onErr: defaultErr,
 		env:   env,
 	}
-	block.Run()
+	block.RunCmds()
 }
 
 // Run executes all commands defined in a block.
-func (b *Block) Run() {
+func (b *Block) Run(cmdBlock string) {
+	b.cmds = strings.Split(strings.Trim(cmdBlock, "\n"), "\n")
+	b.RunCmds()
+}
+
+// RunCmds executes all commands defined in a block.
+func (b *Block) RunCmds() {
 	for lineNum, cmd := range b.cmds {
 		cmd = strings.Trim(strings.ReplaceAll(cmd, "\t", " "), " ")
 		if cmd == "" || strings.HasPrefix(cmd, "//") || strings.HasPrefix(cmd, "#") {
@@ -71,9 +66,11 @@ func (b *Block) Run() {
 			firstWord = cmd[0:space]
 			otherWords = cmd[space+1:]
 		}
-		if f, ok := b.funcs[firstWord]; ok {
-			// call go code
-			err := f(b, otherWords)
+		fmt.Printf("Looking for %s in %+v\n", firstWord, Calls)
+		if f, ok := Calls[strings.ToLower(firstWord)]; ok {
+			// call go code via reflection
+			in := []reflect.Value{reflect.ValueOf(b), reflect.ValueOf(otherWords)}
+			err := f.Func.Call(in)[0].Interface().(error)
 			if err != nil {
 				b.onErr(fmt.Errorf("error in Go code, line %d\n[%s]\n%w", lineNum, cmd, err))
 			}
@@ -111,30 +108,44 @@ func (b *Block) Exec(input string) error {
 	return c.Run()
 }
 
+// ShowFunc displays what functions are callable from the CLI.
+func ShowFunc(b interface{}) error {
+	fooType := reflect.TypeOf(b)
+	for i := 0; i < fooType.NumMethod(); i++ {
+		method := fooType.Method(i)
+		fmt.Println(method.Name)
+	}
+	return nil
+}
+
+// ///////////// Built in calls /////////
+
+var _ = Register(Getwd, Cd, MkDir, Pushd, Popd, Rm, RmDir, Set)
+
 // Getwd returns the current directory.
-func (b *Block) Getwd() (dir string) {
+func Getwd(b *Block) (dir string) {
 	return b.dirs[0]
 }
 
 // Cd changes out of the current directory.
-func (b *Block) Cd(dir string) error {
+func Cd(b *Block, dir string) error {
 	b.dirs[0] = filepath.Join(b.dirs[0], dir)
 	return nil
 }
 
 // MkDir adds a directory to the file system.
-func (b *Block) MkDir(dir string) error {
+func MkDir(b *Block, dir string) error {
 	return os.MkdirAll(dir, 0744)
 }
 
 // Pushd changes out of the current directory to the previous directory.
-func (b *Block) Pushd(dir string) error {
+func Pushd(b *Block, dir string) error {
 	b.dirs = append([]string{dir}, b.dirs...)
 	return nil
 }
 
 // Popd changes out of the current directory to the previous directory.
-func (b *Block) Popd(_ string) error {
+func Popd(b *Block, _ string) error {
 	if len(b.dirs) > 1 {
 		b.dirs = b.dirs[1:]
 	}
@@ -142,18 +153,20 @@ func (b *Block) Popd(_ string) error {
 }
 
 // Rm removes a file from the file system.
-func (b *Block) Rm(file string) error {
+func Rm(b *Block, file string) error {
 	return os.Remove(file)
 }
 
 // RmDir removes a directory from the file system.
-func (b *Block) RmDir(dir string) error {
+func RmDir(b *Block, dir string) error {
 	return os.RemoveAll(dir)
 }
 
 // Set adds or removes a named string to the block's environment.
-func (b *Block) Set(pair string) error {
+func Set(b *Block, pair string) error {
 	i := strings.Index(pair, "=")
 	b.env[strings.Trim(pair[:i], " ")] = strings.Trim(pair[i+1:], " ")
 	return nil
 }
+
+// ///////////// Built in calls /////////
