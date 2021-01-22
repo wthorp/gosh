@@ -38,14 +38,14 @@ You can also register anoymous functions, 3rd party code, or set custom names:
 var _ = gosh.Cmd("helloWorld", func(who string) { ... })
 ```
 
-Commands are invoked in a case insensitive manner. However when registering a function, initial 
+Commands are invoked in a case insensitive manner. However, when registering a function, initial 
 letter capitalization means that the function will be exposed via the command line.
 
 ## Gosh Menu
 
-Gosh supports invoking exposed commands from the CLI as parameters, allowing multiple commands 
-to coexist in the same file.  Running `gosh.Menu()` will either display usage information or 
-invoke the requested CLI parameters.
+Gosh supports invoking exposed commands from the CLI, allowing multiple commands to 
+coexist in the same file.  Running `gosh.Menu()` will either display usage information 
+or invoke the requested CLI parameters.
 
 ```
 func main() {	
@@ -64,8 +64,9 @@ See the [examples directory](./example) to get a better feel for usage.
    - `sync.Once()` and infinite-loop checks are easy imperative fixes
 
 ## Todos:
- - autowire function params into script variables
- - write more tests
+ - clean up script / CLI / param binding
+ - expose function params as script variables by name
+ - write tests
  - add support for non-local targets like Docker or SSH
  - see if there's a way to hack `go run` at runtime to return Gosh error codes
 
