@@ -33,7 +33,7 @@ It's easy to add your own:
 ```
 var _ = gosh.Register(helloWorld)
 ```
-You can also anoymous functions, 3rd party code, or set custom names:
+You can also register anoymous functions, 3rd party code, or set custom names:
 ```
 var _ = gosh.Cmd("helloWorld", func(who string) { ... })
 ```
