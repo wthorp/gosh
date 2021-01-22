@@ -11,7 +11,7 @@ import (
 func main() {
 	// gosh.Menu() is display usage information if this
 	// program is run without parameters.
-	gosh.Menu()
+	gosh.ShowUsage()
 }
 
 // Use gosh.Register with an exported function to
@@ -26,16 +26,16 @@ func HelloGoshAndGo(name string) {
 	`)
 }
 
-// gosh.Func() can also register anonymous functions for
+// gosh.Cmd() can also register anonymous functions for
 // use via command line.  Simple capitalize the name.
-var _ = gosh.Func("HelloGo", func(name string) {
+var _ = gosh.Cmd("HelloGo", func(name string) {
 	fmt.Println("Welcome!")
 	fmt.Printf("Hello %s directly from Go!\n", name)
 })
 
-// gosh.Func() can also be used to hide exported commands
+// gosh.Cmd() can also be used to hide exported commands
 // from the CLI, while leaving them accessible from script.
-var _ = gosh.Func("secret", PoorlyGuardedSecret)
+var _ = gosh.Cmd("secret", PoorlyGuardedSecret)
 
 // PoorlyGuardedSecret could be from a 3rd party code.
 func PoorlyGuardedSecret() {

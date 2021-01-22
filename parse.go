@@ -118,14 +118,14 @@ func findGoshCalls(astFile *ast.File) []*ast.FuncDecl {
 	goshCalls := make([]*ast.FuncDecl, 0)
 	ast.Inspect(astFile, func(x ast.Node) bool {
 		astFunc, isFunc := x.(*ast.FuncDecl)
-		if isFunc && astFunc.Recv != nil && types.ExprString(astFunc.Recv.List[0].Type) == "*gosh.Block" {
+		if isFunc && astFunc.Recv != nil && types.ExprString(astFunc.Recv.List[0].Type) == "*gosh.Script" {
 			goshCalls = append(goshCalls, astFunc)
 		}
 		// params := astFunc.Type.Params.List
 		// if len(params) == 0 {
 		// 	continue
 		// }
-		// if types.ExprString(params[0].Type) != "*gosh.Block" {
+		// if types.ExprString(params[0].Type) != "*gosh.Script" {
 		// 	continue
 		// }
 		return !isFunc // skip the inside of any functions

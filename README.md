@@ -5,9 +5,9 @@ GoSh makes it easy to write command-running scripts from Go code:
  - invoke different scripts from the same file, similar to Make or Just
  - run scripts concurrently without working directory or environment contention
 
-## Using GoSh Scripts
+## GoSh Scripts
 
-The basis of GoSh is that it can run multi-line blocks of code.  
+The basis of GoSh is that it can run multi-line scripts of code.  
 ```
 func main() {	
 	gosh.Run(`
@@ -18,7 +18,9 @@ func main() {
 }
 ```
 
-GoSh has the following Shell-like commands built in, but it's easy to add your own:
+## GoSh Commands
+
+GoSh has the following shell-like commands built in, but it's easy to add your own:
 
  - cd : change the working directory
  - echo : write to the console
@@ -34,25 +36,25 @@ You can register custom functions with Gosh:
 ```
 var _ = gosh.Register(helloWorld)
 ```
-Alternatively, gosh.Func() can registers anoymous functions or existing functions using custom names:
+Alternatively, gosh.Cmd() can registers anoymous functions or existing functions using custom names:
 ```
-var _ = gosh.Func("helloWorld", func(who string) { ... })
+var _ = gosh.Cmd("helloWorld", func(who string) { ... })
 ```
 
-Commands may be invoked in a case insensitive manner, however when registering a function, initial 
-capitalization means that the function will be callable via the command line.
+Commands are invoked in a case insensitive manner. However when registering a function, initial 
+letter capitalization means that the function will be exposed via the command line.
 
-## Using Multiple Script support
+## Gosh Menu
 
-Gosh automatically creates CLI mapping, supporting multiple exposed functions in a single file:
+Gosh supports invoking exposed commands from the CLI as parameters, allowing multiple commands 
+to coexist in the same file.  Running `gosh.Menu()` will either display usage information or 
+invoke the requested CLI parameters.
 
 ```
 func main() {	
 	gosh.Menu()
 }
 ```
-
-This will display usage information and available targets if run without command-line parameters.
 
 See the [examples directory](./example) to get a better feel for usage.
 
@@ -63,17 +65,11 @@ See the [examples directory](./example) to get a better feel for usage.
  - declarative dependencies (like Make)
    - its assumed that calling Go functions covers the 85% use case
    - `sync.Once()` and infinite-loop checks are easy imperative fixes
- - support for calling arbitrary functions in external modules
-   - if external function needs to be supported, it can be wrapped in an appropriate local function 
-  
 
 ## Todos:
- - combining all Call and Target logic
  - autowire function params into script variables
  - write more tests
- - more research on not adding cruft to modules
  - add support for non-local targets like Docker or SSH
- - look at [Just](https://github.com/casey/just)
- - see if there's a way to hack `go run` at runtime to return results correctly
+ - see if there's a way to hack `go run` at runtime to return Gosh error codes
 
 GoSh is pronounced 'gosh' if you like it, otherwise 'gauche'.

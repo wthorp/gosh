@@ -10,12 +10,12 @@ import (
 
 func main() {
 	gosh.Run(`
-		set yinz = gosh
-		goHello ${yinz}
+		set name = gosh
+		goHello ${name}
 		count3
 		count2
 		count1
-		goOdBye ${yinz}
+		goOdBye ${name}
 	`)
 }
 
@@ -35,14 +35,14 @@ func count1() {
 	fmt.Println(1)
 }
 func count2() {
-	fmt.Println(1)
+	fmt.Println(2)
 }
 func count3() {
-	fmt.Println(1)
+	fmt.Println(3)
 }
 
 // An alternative to gosh.Register is gosh.Func,
 // which uses a string name and an anonymous function.
-var _ = gosh.Func("goOdBye", func(who string) {
-	fmt.Printf("Hello %s\n", who)
+var _ = gosh.Cmd("goOdBye", func(who string) {
+	fmt.Printf("Goodbye %s\n", who)
 })

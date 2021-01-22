@@ -2,7 +2,7 @@ package gosh
 
 import (
 	"fmt"
-	"go/ast"
+	"os"
 	"path/filepath"
 	"reflect"
 	"runtime"
@@ -30,14 +30,14 @@ func Register(funcs ...interface{}) interface{} {
 		}
 		longName := runtime.FuncForPC(rv.Pointer()).Name()
 		shortName := longName[strings.LastIndex(longName, ".")+1:]
-		Func(shortName, f)
+		Cmd(shortName, f)
 	}
 	return nil
 }
 
 // Func associates a Go function with a name, so that it can be invoked
 // via scripts or the command line.
-func Func(name string, call interface{}) interface{} {
+func Cmd(name string, call interface{}) interface{} {
 	rv := reflect.ValueOf(call)
 	if rv.Kind() != reflect.Func {
 		panic(fmt.Sprintf("Cannot create go call from '%s'", name))
@@ -50,18 +50,20 @@ func Func(name string, call interface{}) interface{} {
 }
 
 // ShowUsage displays what functions are callable from the CLI.
-func ShowUsage(goSrc string, astFile *ast.File) error {
+func ShowUsage() error {
 	foundTargets := false
-	fmt.Printf("Available code for 'go run %s' [name]:\n", filepath.Base(goSrc))
+	exe, _ := os.Executable()
+	fmt.Printf("Available code for 'go run %s' [name]:\n", filepath.Base(exe))
 	for _, c := range Calls {
 		fmt.Printf("    %s ", c.Name)
 		// for p := 0; p < c.Func.Type.NumIn(); p++ {
 		// 	fmt.Printf("%v ", c.Func.Type.In(p).Name)
 		// }
 		fmt.Printf("\n")
+		foundTargets = true
 	}
 	if !foundTargets {
-		fmt.Printf("    No targets exist in go file '%s'!\n", goSrc)
+		fmt.Printf("    No targets found!\n")
 	}
 	return nil
 }
