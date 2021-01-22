@@ -7,7 +7,7 @@ GoSh makes it easy to write command-running scripts from Go code:
 
 ## GoSh Scripts
 
-The basis of GoSh is that it can run multi-line scripts of code.  
+The basis of GoSh is that it can run multi-line scripts:  
 ```
 gosh.Run(`
 	set yinz = World
@@ -18,7 +18,7 @@ gosh.Run(`
 
 ## GoSh Commands
 
-GoSh has the following shell-like commands built in:
+GoSh has the following shell-like commands built in, for use from scripts:
 
  - cd : change the working directory
  - echo : write to the console
