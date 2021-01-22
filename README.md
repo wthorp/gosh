@@ -9,18 +9,16 @@ GoSh makes it easy to write command-running scripts from Go code:
 
 The basis of GoSh is that it can run multi-line scripts of code.  
 ```
-func main() {	
-	gosh.Run(`
-		set yinz = World
-		echo Hello ${yinz}
-		git diff
-	`)
-}
+gosh.Run(`
+	set yinz = World
+	echo Hello ${yinz}
+	git diff
+`)
 ```
 
 ## GoSh Commands
 
-GoSh has the following shell-like commands built in, but it's easy to add your own:
+GoSh has the following shell-like commands built in:
 
  - cd : change the working directory
  - echo : write to the console
@@ -31,12 +29,11 @@ GoSh has the following shell-like commands built in, but it's easy to add your o
  - rmdir : remove a directory
  - set : save text as a variable
 
-You can register custom functions with Gosh:
-
+It's easy to add your own:
 ```
 var _ = gosh.Register(helloWorld)
 ```
-Alternatively, gosh.Cmd() can registers anoymous functions or existing functions using custom names:
+You can also anoymous functions, 3rd party code, or set custom names:
 ```
 var _ = gosh.Cmd("helloWorld", func(who string) { ... })
 ```
