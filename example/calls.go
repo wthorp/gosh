@@ -41,8 +41,8 @@ func count3() {
 	fmt.Println(3)
 }
 
-// An alternative to gosh.Register is gosh.Func,
-// which uses a string name and an anonymous function.
+// An alternative to gosh.Register is gosh.Cmd, which
+// uses a custom name and supports anonymous functions.
 var _ = gosh.Cmd("goOdBye", func(who string) {
 	fmt.Printf("Goodbye %s\n", who)
 })

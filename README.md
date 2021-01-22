@@ -64,7 +64,7 @@ See the [examples directory](./example) to get a better feel for usage.
    - `sync.Once()` and infinite-loop checks are easy imperative fixes
 
 ## Todos:
- - clean up script / CLI / param binding
+ - better script / CLI / param binding
  - expose function params as script variables by name
  - write tests
  - add support for non-local targets like Docker or SSH
