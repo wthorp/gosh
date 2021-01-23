@@ -2,8 +2,6 @@ package gosh
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"reflect"
 	"runtime"
 	"strings"
@@ -35,7 +33,7 @@ func Register(funcs ...interface{}) interface{} {
 	return nil
 }
 
-// Func associates a Go function with a name, so that it can be invoked
+// Cmd associates a Go function with a name, so that it can be invoked
 // via scripts or the command line.
 func Cmd(name string, call interface{}) interface{} {
 	rv := reflect.ValueOf(call)
@@ -46,24 +44,5 @@ func Cmd(name string, call interface{}) interface{} {
 		panic(fmt.Sprintf("Cannot create more than one call named '%s'", name))
 	}
 	Calls[strings.ToLower(name)] = Call{Name: name, Func: rv, Exported: unicode.IsUpper([]rune(name)[0])}
-	return nil
-}
-
-// ShowUsage displays what functions are callable from the CLI.
-func ShowUsage() error {
-	foundTargets := false
-	exe, _ := os.Executable()
-	fmt.Printf("Available code for 'go run %s' [name]:\n", filepath.Base(exe))
-	for _, c := range Calls {
-		fmt.Printf("    %s ", c.Name)
-		// for p := 0; p < c.Func.Type.NumIn(); p++ {
-		// 	fmt.Printf("%v ", c.Func.Type.In(p).Name)
-		// }
-		fmt.Printf("\n")
-		foundTargets = true
-	}
-	if !foundTargets {
-		fmt.Printf("    No targets found!\n")
-	}
 	return nil
 }

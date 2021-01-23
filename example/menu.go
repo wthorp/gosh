@@ -11,7 +11,7 @@ import (
 func main() {
 	// gosh.Menu() is display usage information if this
 	// program is run without parameters.
-	gosh.ShowUsage()
+	gosh.Menu()
 }
 
 // Use gosh.Register with an exported function to
