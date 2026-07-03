@@ -186,26 +186,6 @@ For tighter routing, use `gosh.SafePolicy()` or pass a custom `gosh.Policy`.
 
 See the [examples directory](./example) to get a better feel for usage.
 
-## Quality Checks
-
-The repo includes a Storj-inspired quality workflow:
-
-```
-make fmt        # format Go and repo text files
-make fmt-check  # verify formatting
-make lint       # run golangci-lint
-make vet        # run go vet
-make test       # run tests
-make coverage   # run tests with an 80% coverage floor
-make check      # run all checks
-```
-
-`make lint` uses `golangci-lint` v2 with the repo's `.golangci.yml`; `make fmt` uses `gofmt` plus
-Prettier for Markdown/YAML/JSON config. `make coverage` writes `coverage.out` and enforces
-`COVERAGE_MIN`, which defaults to `80.0`.
-
-GitHub Actions runs `make check` on pushes and pull requests.
-
 ## Current non-goals
 
 - returning error codes when used with `go run`
