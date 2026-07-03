@@ -1,46 +1,99 @@
 package gosh
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 )
 
+// MenuOptions configures MenuWithOptions.
+type MenuOptions struct {
+	Policy  Policy
+	Backend AIBackend
+	Stdout  io.Writer
+	Stderr  io.Writer
+}
+
 // Menu displays usage information or invokes an exported command
 func Menu() {
+	MenuWithOptions(MenuOptions{})
+}
+
+// MenuWithOptions displays usage information, resolves input, or routes it.
+func MenuWithOptions(options MenuOptions) {
 	// show usage information if no command specified
 	if len(os.Args) <= 1 {
 		// if goSrc := determineGoFile(); goSrc != "" {
 		// 	showUsageFromSrc(goSrc)
 		//  return
 		// }
-		showUsageFromReflection()
+		showUsageFromReflection(defaultWriter(options.Stdout, os.Stdout))
+		return
+	}
+
+	policy := options.Policy
+	if !policy.configured() {
+		policy = DefaultPolicy()
+	}
+
+	if os.Args[1] == "--resolve" {
+		input := strings.Join(os.Args[2:], " ")
+		result := ResolveWithPolicy(input, policy)
+		if err := writeRouteJSON(defaultWriter(options.Stdout, os.Stdout), result); err != nil {
+			defaultErr(err)
+		}
+	} else if os.Args[1] == "tools" && len(os.Args) > 2 && os.Args[2] == "--json" {
+		if err := writeJSON(defaultWriter(options.Stdout, os.Stdout), Tools()); err != nil {
+			defaultErr(err)
+		}
+	} else if os.Args[1] == "serve" && len(os.Args) > 2 && os.Args[2] == "mcp" {
+		if err := ServeMCP(os.Stdin, defaultWriter(options.Stdout, os.Stdout), defaultWriter(options.Stderr, os.Stderr)); err != nil {
+			defaultErr(err)
+		}
 	} else {
-		Run(strings.Join(os.Args[1:], " "))
+		err := RouteWithOptions(context.Background(), strings.Join(os.Args[1:], " "), RouteOptions{
+			Policy:  policy,
+			Backend: options.Backend,
+			Stdout:  options.Stdout,
+			Stderr:  options.Stderr,
+		})
+		if err != nil {
+			defaultErr(err)
+		}
 	}
 }
 
 // showUsageFromReflection displays what functions are callable from the CLI, using reflection.
-func showUsageFromReflection() {
+func showUsageFromReflection(w io.Writer) {
 	foundTargets := false
 	exe, _ := os.Executable()
-	fmt.Printf("Usage: 'go run %s.go' [command]:\n", filepath.Base(exe))
+	writef(w, "Usage: 'go run %s.go' [command]:\n", filepath.Base(exe))
 	for _, c := range Calls {
 		if c.Exported {
-			fmt.Printf("    %s ", c.Name)
+			writef(w, "    %s ", c.Name)
 			rt := c.Func.Type()
 			for p := 0; p < rt.NumIn(); p++ {
 				// todo: see if there's a hack to get parameter names and comments
-				fmt.Printf("[%s] ", rt.In(p).Name())
+				writef(w, "[%s] ", rt.In(p).Name())
 			}
-			fmt.Printf("\n")
+			writef(w, "\n")
 			foundTargets = true
 		}
 	}
 	if !foundTargets {
-		fmt.Printf("    No targets found!\n")
+		writef(w, "    No targets found!\n")
 	}
+	writef(w, "\nMeta:\n")
+	writef(w, "    --resolve [input]    classify input as JSON without executing\n")
+	writef(w, "    tools --json         list exported Gosh tools as JSON\n")
+	writef(w, "    serve mcp            serve exported Gosh tools over MCP stdio\n")
+}
+
+func writef(w io.Writer, format string, args ...interface{}) {
+	_, _ = fmt.Fprintf(w, format, args...)
 }
 
 // // showUsageFromSrc displays what functions are callable from the CLI, using Go source.

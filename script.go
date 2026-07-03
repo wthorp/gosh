@@ -5,12 +5,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"reflect"
-	"regexp"
 	"strings"
 )
 
-var lineRegEx = regexp.MustCompile(`[^\s"]+|"([^"]*)"`)
 var defaultErr = func(err error) {
 	fmt.Printf("FAIL: %+v", err)
 	os.Exit(1)
@@ -26,19 +23,32 @@ type Script struct {
 
 // Run creates a new execution script context.
 func Run(cmdScript string) {
+	if err := RunE(cmdScript); err != nil {
+		defaultErr(err)
+	}
+}
+
+// RunE creates a new execution script context and returns the first error.
+func RunE(cmdScript string) error {
 	workingDir, _ := os.Getwd()
 	env := make(map[string]string, len(os.Environ()))
 	for _, pair := range os.Environ() {
 		i := strings.Index(pair, "=")
 		env[pair[0:i]] = pair[i+1:]
 	}
+	var firstErr error
 	script := Script{
-		cmds:  strings.Split(strings.Trim(cmdScript, "\n"), "\n"),
-		dirs:  []string{workingDir},
-		onErr: defaultErr,
-		env:   env,
+		cmds: strings.Split(strings.Trim(cmdScript, "\n"), "\n"),
+		dirs: []string{workingDir},
+		onErr: func(err error) {
+			if firstErr == nil {
+				firstErr = err
+			}
+		},
+		env: env,
 	}
 	script.RunCmds()
+	return firstErr
 }
 
 // Run executes all commands defined in a script.
@@ -65,28 +75,27 @@ func (s *Script) RunCmds() {
 		}
 
 		if f, ok := Calls[strings.ToLower(firstWord)]; ok {
-			// add script as a parameter if the function supports it
-			var in []reflect.Value
-			if f.Func.Type().NumIn() == 0 {
-				in = []reflect.Value{}
-			} else if f.Func.Type().In(0) == reflect.TypeOf(&Script{}) {
-				in = []reflect.Value{reflect.ValueOf(s), reflect.ValueOf(otherWords)}
-			} else {
-				in = []reflect.Value{reflect.ValueOf(otherWords)}
-			}
-			// call go code via reflection
-			callResults := f.Func.Call(in)
-			for _, result := range callResults {
-				err, ok := result.Interface().(error)
-				if ok && err != nil {
-					s.onErr(fmt.Errorf("error in Go code, line %d\n[%s]\n%w", lineNum, cmd, err))
+			args := []string{}
+			if f.Tool.Structured {
+				params, err := SplitArgs(cmd)
+				if err != nil {
+					s.onErr(fmt.Errorf("error parsing args, line %d\n[%s]\n%w", lineNum, cmd, err))
+					return
 				}
+				if len(params) > 1 {
+					args = params[1:]
+				}
+			}
+			if err := invokeCall(s, f, otherWords, args); err != nil {
+				s.onErr(fmt.Errorf("error in Go code, line %d\n[%s]\n%w", lineNum, cmd, err))
+				return
 			}
 		} else {
 			// run executable program
 			err := s.Exec(cmd)
 			if err != nil {
 				s.onErr(fmt.Errorf("error executing program, line %d\n[%s]\n%w", lineNum, cmd, err))
+				return
 			}
 		}
 	}
@@ -94,7 +103,13 @@ func (s *Script) RunCmds() {
 
 // Exec runs a program on the operating system.
 func (s *Script) Exec(input string) error {
-	params := lineRegEx.FindAllString(input, -1)
+	params, err := SplitArgs(input)
+	if err != nil {
+		return err
+	}
+	if len(params) == 0 {
+		return nil
+	}
 	cmd := params[0]
 	args := []string{}
 	if len(params) > 1 {
