@@ -13,6 +13,7 @@ type Call struct {
 	Name     string
 	Func     reflect.Value
 	Exported bool
+	Tool     ToolSpec
 }
 
 // Calls reference all code that can be invoked from script or CLI
@@ -36,13 +37,28 @@ func Register(funcs ...interface{}) interface{} {
 // Cmd associates a Go function with a name, so that it can be invoked
 // via scripts or the command line.
 func Cmd(name string, call interface{}) interface{} {
+	return registerCall(name, call)
+}
+
+func registerCall(name string, call interface{}, options ...ToolOption) interface{} {
+	if name == "" {
+		panic("Cannot create call with empty name")
+	}
 	rv := reflect.ValueOf(call)
 	if rv.Kind() != reflect.Func {
 		panic(fmt.Sprintf("Cannot create go call from '%s'", name))
 	}
-	if _, found := Calls[name]; found {
+	key := strings.ToLower(name)
+	if _, found := Calls[key]; found {
 		panic(fmt.Sprintf("Cannot create more than one call named '%s'", name))
 	}
-	Calls[strings.ToLower(name)] = Call{Name: name, Func: rv, Exported: unicode.IsUpper([]rune(name)[0])}
+	exported := unicode.IsUpper([]rune(name)[0])
+	tool := minimalToolSpec(name, exported)
+	for _, option := range options {
+		option(&tool)
+	}
+	ensureLegacyInputParam(&tool, rv.Type())
+	inferParamTypes(&tool, rv.Type())
+	Calls[key] = Call{Name: name, Func: rv, Exported: exported, Tool: tool}
 	return nil
 }

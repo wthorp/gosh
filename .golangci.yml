@@ -1,0 +1,109 @@
+version: "2"
+
+run:
+  issues-exit-code: 1
+  tests: true
+
+output:
+  formats:
+    text:
+      path: stdout
+      print-linter-name: true
+      print-issued-lines: true
+
+linters:
+  enable:
+    - bidichk
+    - bodyclose
+    - dogsled
+    - durationcheck
+    - errcheck
+    - errorlint
+    - gocheckcompilerdirectives
+    - gocritic
+    - govet
+    - ineffassign
+    - makezero
+    - misspell
+    - nakedret
+    - nilerr
+    - revive
+    - staticcheck
+    - unconvert
+    - unused
+    - usestdlibvars
+    - wastedassign
+
+  disable:
+    - cyclop
+    - depguard
+    - dupl
+    - err113
+    - exhaustruct
+    - funlen
+    - gochecknoglobals
+    - gochecknoinits
+    - gocognit
+    - gocyclo
+    - godot
+    - gosec
+    - ireturn
+    - lll
+    - mnd
+    - nestif
+    - nilnil
+    - noctx
+    - nonamedreturns
+    - paralleltest
+    - prealloc
+    - testpackage
+    - unparam
+    - varnamelen
+    - wrapcheck
+    - wsl
+
+  settings:
+    errcheck:
+      check-blank: false
+      check-type-assertions: false
+    gocritic:
+      enabled-checks:
+        - deferInLoop
+      disabled-checks:
+        - ifElseChain
+    nakedret:
+      max-func-lines: 20
+    revive:
+      rules:
+        - name: package-comments
+          disabled: true
+        - name: exported
+          disabled: true
+
+  exclusions:
+    generated: lax
+    rules:
+      - linters:
+          - revive
+        text: unused-parameter
+      - linters:
+          - revive
+        text: redefines-builtin-id
+    paths:
+      - ^vendor/
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  new: false
+
+formatters:
+  enable:
+    - gofmt
+  settings:
+    gofmt:
+      simplify: true
+  exclusions:
+    generated: lax
+    paths:
+      - ^vendor/

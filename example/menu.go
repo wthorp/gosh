@@ -1,4 +1,5 @@
-//+build ignore
+//go:build ignore
+// +build ignore
 
 package main
 
@@ -9,8 +10,12 @@ import (
 )
 
 func main() {
-	// gosh.Menu() is display usage information if this
-	// program is run without parameters.
+	// gosh.Menu() displays usage information if this
+	// program is run without parameters. It also handles:
+	//
+	//	go run example/menu.go --resolve "Deploy staging 2"
+	//	go run example/menu.go tools --json
+	//	go run example/menu.go serve mcp
 	gosh.Menu()
 }
 
@@ -40,4 +45,18 @@ var _ = gosh.Cmd("secret", PoorlyGuardedSecret)
 // PoorlyGuardedSecret could be from a 3rd party code.
 func PoorlyGuardedSecret() {
 	fmt.Println("Shh!  The secret word is 'gosh'!")
+}
+
+// Use gosh.Tool to make a command discoverable and typed for agents.
+var _ = gosh.Tool("Deploy", Deploy,
+	gosh.Desc("Deploy the example service to an environment"),
+	gosh.Param("env", gosh.Enum("staging", "prod")),
+	gosh.Param("replicas", gosh.Type("integer")),
+	gosh.Risk(gosh.RiskHigh),
+	gosh.RequiresApproval(),
+)
+
+// Deploy is callable from scripts, the CLI, tools --json, and MCP.
+func Deploy(env string, replicas int) {
+	fmt.Printf("Deploying %d replicas to %s\n", replicas, env)
 }
