@@ -71,7 +71,7 @@ func (b CodexBackend) Run(ctx context.Context, input string) error {
 		args = append(args, "--sandbox", b.Sandbox)
 	}
 	if b.Approval != "" {
-		args = append(args, "--ask-for-approval", b.Approval)
+		args = append(args, "-c", fmt.Sprintf("approval_policy=%q", b.Approval))
 	}
 	args = append(args, b.Args...)
 	args = append(args, codexPrompt(input))

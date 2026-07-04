@@ -53,10 +53,11 @@ func registerCall(name string, call interface{}, options ...ToolOption) interfac
 		panic(fmt.Sprintf("Cannot create more than one call named '%s'", name))
 	}
 	exported := unicode.IsUpper([]rune(name)[0])
-	tool := minimalToolSpec(name, rv, exported, len(options) == 0)
+	tool := minimalToolSpec(name, exported)
 	for _, option := range options {
 		option(&tool)
 	}
+	ensureLegacyInputParam(&tool, rv.Type())
 	inferParamTypes(&tool, rv.Type())
 	Calls[key] = Call{Name: name, Func: rv, Exported: exported, Tool: tool}
 	return nil

@@ -93,9 +93,9 @@ func TestScriptBuiltins(t *testing.T) {
 	}
 }
 
-func TestRunCmdsUsesLegacyBuiltinsAndStopsOnError(t *testing.T) {
+func TestRunCmdsUsesLegacyBuiltinsAndContinuesAfterError(t *testing.T) {
 	dir := t.TempDir()
-	var gotErr error
+	var gotErrs []error
 	script := &Script{
 		cmds: []string{
 			"# comment",
@@ -105,14 +105,14 @@ func TestRunCmdsUsesLegacyBuiltinsAndStopsOnError(t *testing.T) {
 			"mkdir sub",
 			"cd sub",
 			"bad-command-that-does-not-exist",
-			"echo should-not-run",
+			"echo still-runs",
 		},
 		dirs: []string{dir},
 		env: map[string]string{
 			"PATH": os.Getenv("PATH"),
 		},
 		onErr: func(err error) {
-			gotErr = err
+			gotErrs = append(gotErrs, err)
 		},
 	}
 
@@ -123,11 +123,11 @@ func TestRunCmdsUsesLegacyBuiltinsAndStopsOnError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(output, "Hello World") {
+	if !strings.Contains(output, "Hello World") || !strings.Contains(output, "still-runs") {
 		t.Fatalf("output = %q", output)
 	}
-	if gotErr == nil || !strings.Contains(gotErr.Error(), "bad-command-that-does-not-exist") {
-		t.Fatalf("expected command error, got %v", gotErr)
+	if len(gotErrs) != 1 || !strings.Contains(gotErrs[0].Error(), "bad-command-that-does-not-exist") {
+		t.Fatalf("expected command error, got %v", gotErrs)
 	}
 	if script.getwd() != filepath.Join(dir, "sub") {
 		t.Fatalf("script dir = %q", script.getwd())

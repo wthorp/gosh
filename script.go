@@ -1,6 +1,7 @@
 package gosh
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -15,40 +16,41 @@ var defaultErr = func(err error) {
 
 // Script represents an execution script context.
 type Script struct {
-	cmds  []string
-	dirs  []string
-	onErr func(error)
-	env   map[string]string
+	cmds     []string
+	dirs     []string
+	onErr    func(error)
+	env      map[string]string
+	ctx      context.Context
+	firstErr error
 }
 
 // Run creates a new execution script context.
 func Run(cmdScript string) {
-	if err := RunE(cmdScript); err != nil {
+	if err := runEContext(context.Background(), cmdScript); err != nil {
 		defaultErr(err)
 	}
 }
 
 // RunE creates a new execution script context and returns the first error.
 func RunE(cmdScript string) error {
+	return runEContext(context.Background(), cmdScript)
+}
+
+func runEContext(ctx context.Context, cmdScript string) error {
 	workingDir, _ := os.Getwd()
 	env := make(map[string]string, len(os.Environ()))
 	for _, pair := range os.Environ() {
 		i := strings.Index(pair, "=")
 		env[pair[0:i]] = pair[i+1:]
 	}
-	var firstErr error
 	script := Script{
 		cmds: strings.Split(strings.Trim(cmdScript, "\n"), "\n"),
 		dirs: []string{workingDir},
-		onErr: func(err error) {
-			if firstErr == nil {
-				firstErr = err
-			}
-		},
-		env: env,
+		env:  env,
+		ctx:  scriptContext(ctx),
 	}
 	script.RunCmds()
-	return firstErr
+	return script.firstErr
 }
 
 // Run executes all commands defined in a script.
@@ -79,23 +81,23 @@ func (s *Script) RunCmds() {
 			if f.Tool.Structured {
 				params, err := SplitArgs(cmd)
 				if err != nil {
-					s.onErr(fmt.Errorf("error parsing args, line %d\n[%s]\n%w", lineNum, cmd, err))
-					return
+					s.reportErr(fmt.Errorf("error parsing args, line %d\n[%s]\n%w", lineNum, cmd, err))
+					continue
 				}
 				if len(params) > 1 {
 					args = params[1:]
 				}
 			}
 			if err := invokeCall(s, f, otherWords, args); err != nil {
-				s.onErr(fmt.Errorf("error in Go code, line %d\n[%s]\n%w", lineNum, cmd, err))
-				return
+				s.reportErr(fmt.Errorf("error in Go code, line %d\n[%s]\n%w", lineNum, cmd, err))
+				continue
 			}
 		} else {
 			// run executable program
 			err := s.Exec(cmd)
 			if err != nil {
-				s.onErr(fmt.Errorf("error executing program, line %d\n[%s]\n%w", lineNum, cmd, err))
-				return
+				s.reportErr(fmt.Errorf("error executing program, line %d\n[%s]\n%w", lineNum, cmd, err))
+				continue
 			}
 		}
 	}
@@ -115,7 +117,7 @@ func (s *Script) Exec(input string) error {
 	if len(params) > 1 {
 		args = params[1:]
 	}
-	c := exec.Command(cmd, args...)
+	c := exec.CommandContext(scriptContext(s.ctx), cmd, args...)
 	c.Stdout = os.Stdout
 	c.Stderr = os.Stderr
 	c.Dir = s.dirs[0]
@@ -123,6 +125,25 @@ func (s *Script) Exec(input string) error {
 		c.Env = append(c.Env, k+"="+v)
 	}
 	return c.Run()
+}
+
+func scriptContext(ctx context.Context) context.Context {
+	if ctx == nil {
+		return context.Background()
+	}
+	return ctx
+}
+
+func (s *Script) reportErr(err error) {
+	if err == nil {
+		return
+	}
+	if s.firstErr == nil {
+		s.firstErr = err
+	}
+	if s.onErr != nil {
+		s.onErr(err)
+	}
 }
 
 // ///////////// Built in calls /////////

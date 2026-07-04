@@ -104,7 +104,7 @@ func TestMenuResolveWritesJSON(t *testing.T) {
 
 	os.Args = []string{"goshfile", "--resolve", "goshroutetestcommand", "hello"}
 	var out bytes.Buffer
-	MenuWithOptions(MenuOptions{Stdout: &out})
+	MenuWithOptions(MenuOptions{Policy: DefaultPolicy(), Stdout: &out})
 
 	var result RouteResult
 	if err := json.Unmarshal(out.Bytes(), &result); err != nil {

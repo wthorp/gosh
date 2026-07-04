@@ -100,6 +100,38 @@ func TestInvokeStructuredCallConversionsAndErrors(t *testing.T) {
 	}
 }
 
+func TestInvokeStructuredCallSupportsTrailingOptionalArgs(t *testing.T) {
+	var got struct {
+		name  string
+		count int
+		note  string
+	}
+	call := Call{
+		Name: "optional-structured",
+		Func: reflect.ValueOf(func(name string, count int, note string) {
+			got.name = name
+			got.count = count
+			got.note = note
+		}),
+		Tool: ToolSpec{
+			Name:       "optional-structured",
+			Structured: true,
+			Params: []ParamSpec{
+				{Name: "name", Type: "string", Required: true},
+				{Name: "count", Type: "integer", Required: false},
+				{Name: "note", Type: "string", Required: false},
+			},
+		},
+	}
+
+	if err := invokeCall(testScript(t.TempDir()), call, "", []string{"bob"}); err != nil {
+		t.Fatal(err)
+	}
+	if got.name != "bob" || got.count != 0 || got.note != "" {
+		t.Fatalf("converted optional values = %+v", got)
+	}
+}
+
 func TestValidateParamValueErrors(t *testing.T) {
 	cases := []ParamSpec{
 		{Name: "ok", Type: "boolean"},
@@ -149,5 +181,42 @@ func TestOptionalParamDescAndSchema(t *testing.T) {
 		jsonTypeForReflect(reflect.TypeOf(uint(1))) != "integer" ||
 		jsonTypeForReflect(reflect.TypeOf(1.2)) != "number" {
 		t.Fatalf("unexpected reflected json types")
+	}
+}
+
+func TestValidateToolArgsRejectsRequiredAfterOptional(t *testing.T) {
+	tool := ToolSpec{
+		Name:       "bad-layout",
+		Structured: true,
+		Params: []ParamSpec{
+			{Name: "first", Type: "string", Required: false},
+			{Name: "second", Type: "string", Required: true},
+		},
+	}
+	validation := validateToolArgs(tool, []string{"x"})
+	if validation.Valid {
+		t.Fatalf("expected invalid tool layout")
+	}
+	if !strings.Contains(strings.Join(validation.Errors, "; "), "required params cannot follow optional params") {
+		t.Fatalf("errors = %#v", validation.Errors)
+	}
+}
+
+func TestValidateCallArgsSupportsUint64(t *testing.T) {
+	call := Call{
+		Name: "uint64-tool",
+		Func: reflect.ValueOf(func(value uint64) {}),
+		Tool: ToolSpec{
+			Name:       "uint64-tool",
+			Structured: true,
+			Params: []ParamSpec{
+				{Name: "value", Type: "integer", Required: true},
+			},
+		},
+	}
+
+	validation := validateCallArgs(call, []string{"18446744073709551615"})
+	if !validation.Valid {
+		t.Fatalf("validation errors = %#v", validation.Errors)
 	}
 }

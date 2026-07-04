@@ -78,7 +78,7 @@ func TestCodexBackendRunBuildsCommand(t *testing.T) {
 		t.Fatal(err)
 	}
 	args := strings.Split(strings.TrimSpace(string(raw)), "\n")
-	wantPrefix := []string{"exec", "--model", "gpt-test", "--cd", dir, "--sandbox", "read-only", "--ask-for-approval", "never", "--search"}
+	wantPrefix := []string{"exec", "--model", "gpt-test", "--cd", dir, "--sandbox", "read-only", "-c", `approval_policy="never"`, "--search"}
 	if len(args) < len(wantPrefix)+1 {
 		t.Fatalf("args too short: %#v", args)
 	}

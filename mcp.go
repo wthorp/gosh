@@ -3,10 +3,12 @@ package gosh
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -61,23 +63,28 @@ func ServeMCPWithOptions(in io.Reader, out io.Writer, logs io.Writer, options MC
 		logs = os.Stderr
 	}
 
-	scanner := bufio.NewScanner(in)
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-	encoder := json.NewEncoder(out)
+	reader := bufio.NewReader(in)
 
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
-			continue
+	for {
+		payload, err := readMCPMessage(reader)
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return err
 		}
 
 		var req mcpRequest
-		if err := json.Unmarshal([]byte(line), &req); err != nil {
-			writeMCPError(encoder, json.RawMessage("null"), -32700, "Parse error", err.Error())
+		if err := json.Unmarshal(payload, &req); err != nil {
+			if err := writeMCPError(out, json.RawMessage("null"), -32700, "Parse error", err.Error()); err != nil {
+				return err
+			}
 			continue
 		}
 		if req.JSONRPC != "2.0" || req.Method == "" {
-			writeMCPError(encoder, req.IDOrNull(), -32600, "Invalid Request", nil)
+			if err := writeMCPError(out, req.IDOrNull(), -32600, "Invalid Request", nil); err != nil {
+				return err
+			}
 			continue
 		}
 		if len(req.ID) == 0 {
@@ -87,14 +94,15 @@ func ServeMCPWithOptions(in io.Reader, out io.Writer, logs io.Writer, options MC
 
 		result, rpcErr := handleMCPRequest(req, options)
 		if rpcErr != nil {
-			writeMCPError(encoder, req.ID, rpcErr.Code, rpcErr.Message, rpcErr.Data)
+			if err := writeMCPError(out, req.ID, rpcErr.Code, rpcErr.Message, rpcErr.Data); err != nil {
+				return err
+			}
 			continue
 		}
-		if err := encoder.Encode(mcpResponse{JSONRPC: "2.0", ID: req.ID, Result: result}); err != nil {
+		if err := writeMCPMessage(out, mcpResponse{JSONRPC: "2.0", ID: req.ID, Result: result}); err != nil {
 			return err
 		}
 	}
-	return scanner.Err()
 }
 
 func (r mcpRequest) IDOrNull() json.RawMessage {
@@ -136,7 +144,9 @@ func handleMCPRequest(req mcpRequest, options MCPOptions) (interface{}, *mcpErro
 			Name      string                 `json:"name"`
 			Arguments map[string]interface{} `json:"arguments"`
 		}
-		if err := json.Unmarshal(req.Params, &params); err != nil {
+		decoder := json.NewDecoder(bytes.NewReader(req.Params))
+		decoder.UseNumber()
+		if err := decoder.Decode(&params); err != nil {
 			return nil, &mcpError{Code: -32602, Message: "Invalid params", Data: err.Error()}
 		}
 		return callMCPToolWithOptions(params.Name, params.Arguments, options)
@@ -145,8 +155,8 @@ func handleMCPRequest(req mcpRequest, options MCPOptions) (interface{}, *mcpErro
 	}
 }
 
-func writeMCPError(encoder *json.Encoder, id json.RawMessage, code int, message string, data interface{}) {
-	_ = encoder.Encode(mcpResponse{
+func writeMCPError(out io.Writer, id json.RawMessage, code int, message string, data interface{}) error {
+	return writeMCPMessage(out, mcpResponse{
 		JSONRPC: "2.0",
 		ID:      id,
 		Error:   &mcpError{Code: code, Message: message, Data: data},
@@ -188,7 +198,7 @@ func callMCPToolWithOptions(name string, arguments map[string]interface{}, optio
 	if err != nil {
 		return nil, &mcpError{Code: -32602, Message: "Invalid arguments", Data: err.Error()}
 	}
-	if validation := validateToolArgs(call.Tool, argv); !validation.Valid {
+	if validation := validateMCPCallArgs(call, arguments); !validation.Valid {
 		return nil, &mcpError{Code: -32602, Message: "Invalid arguments", Data: validation.Errors}
 	}
 	if call.Tool.RequiresApproval && !options.AllowApprovalRequired {
@@ -203,7 +213,16 @@ func callMCPToolWithOptions(name string, arguments map[string]interface{}, optio
 		if err != nil {
 			return err
 		}
-		return invokeCall(script, call, rawArgs, argv)
+		if call.Tool.Structured {
+			if err := invokeStructuredCall(script, call, argv); err != nil {
+				return err
+			}
+		} else {
+			if err := invokeLegacyCall(script, call, rawArgs); err != nil {
+				return err
+			}
+		}
+		return script.firstErr
 	})
 	if callErr != nil {
 		return map[string]interface{}{
@@ -228,24 +247,71 @@ func callMCPToolWithOptions(name string, arguments map[string]interface{}, optio
 
 func mcpArgs(tool ToolSpec, arguments map[string]interface{}) (string, []string, error) {
 	if !tool.Structured {
+		allowed := make(map[string]struct{}, len(tool.Params))
+		for _, param := range tool.Params {
+			allowed[param.Name] = struct{}{}
+		}
+		for name := range arguments {
+			if _, ok := allowed[name]; !ok {
+				return "", nil, fmt.Errorf("unknown argument %s", name)
+			}
+		}
 		if value, ok := arguments["input"]; ok {
 			return fmt.Sprint(value), nil, nil
 		}
 		return "", nil, nil
 	}
 
-	args := []string{}
+	allowed := make(map[string]struct{}, len(tool.Params))
+	for _, param := range tool.Params {
+		allowed[param.Name] = struct{}{}
+	}
+	for name := range arguments {
+		if _, ok := allowed[name]; !ok {
+			return "", nil, fmt.Errorf("unknown argument %s", name)
+		}
+	}
+
+	args := make([]string, 0, len(tool.Params))
 	for _, param := range tool.Params {
 		value, ok := arguments[param.Name]
 		if !ok {
 			if param.Required {
 				return "", nil, fmt.Errorf("missing required argument %s", param.Name)
 			}
+			args = append(args, zeroValueString(param))
 			continue
 		}
 		args = append(args, argumentString(value))
 	}
 	return strings.Join(args, " "), args, nil
+}
+
+func validateMCPCallArgs(call Call, arguments map[string]interface{}) argValidation {
+	if !call.Tool.Structured {
+		return validateCallArgs(call, nil)
+	}
+
+	errors := validateToolLayout(call.Tool)
+	paramTypes := reflectedParamTypes(call.Func.Type())
+	if len(paramTypes) != len(call.Tool.Params) {
+		errors = append(errors, fmt.Sprintf("tool %s declares %d params but function expects %d reflected args", call.Name, len(call.Tool.Params), len(paramTypes)))
+		return argValidation{Valid: false, Errors: errors}
+	}
+
+	for i, param := range call.Tool.Params {
+		value, ok := arguments[param.Name]
+		if !ok {
+			if param.Required {
+				errors = append(errors, fmt.Sprintf("missing required argument %s", param.Name))
+			}
+			continue
+		}
+		if err := validateParamValueForTarget(param, argumentString(value), paramTypes[i]); err != nil {
+			errors = append(errors, err.Error())
+		}
+	}
+	return argValidation{Valid: len(errors) == 0, Errors: errors}
 }
 
 func argumentString(value interface{}) string {
@@ -262,6 +328,75 @@ func argumentString(value interface{}) string {
 	}
 }
 
+func readMCPMessage(reader *bufio.Reader) ([]byte, error) {
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			trimmed := strings.TrimSpace(line)
+			if err == io.EOF && trimmed == "" {
+				return nil, io.EOF
+			}
+			if err == io.EOF && looksLikeMCPJSON(trimmed) {
+				return []byte(trimmed), nil
+			}
+			if err == io.EOF {
+				return nil, io.ErrUnexpectedEOF
+			}
+			return nil, err
+		}
+
+		headerLine := strings.TrimRight(line, "\r\n")
+		trimmed := strings.TrimSpace(headerLine)
+		if trimmed == "" {
+			continue
+		}
+		if looksLikeMCPJSON(trimmed) {
+			return []byte(trimmed), nil
+		}
+
+		headers := map[string]string{}
+		for {
+			name, value, ok := strings.Cut(headerLine, ":")
+			if !ok {
+				return nil, fmt.Errorf("invalid MCP header line %q", headerLine)
+			}
+			headers[strings.ToLower(strings.TrimSpace(name))] = strings.TrimSpace(value)
+
+			next, err := reader.ReadString('\n')
+			if err != nil {
+				return nil, err
+			}
+			headerLine = strings.TrimRight(next, "\r\n")
+			if strings.TrimSpace(headerLine) == "" {
+				break
+			}
+		}
+
+		lengthValue, ok := headers["content-length"]
+		if !ok {
+			return nil, fmt.Errorf("missing Content-Length header")
+		}
+		length, err := strconv.Atoi(lengthValue)
+		if err != nil || length < 0 {
+			return nil, fmt.Errorf("invalid Content-Length %q", lengthValue)
+		}
+
+		payload := make([]byte, length)
+		if _, err := io.ReadFull(reader, payload); err != nil {
+			return nil, err
+		}
+		return payload, nil
+	}
+}
+
+func writeMCPMessage(out io.Writer, payload interface{}) error {
+	return json.NewEncoder(out).Encode(payload)
+}
+
+func looksLikeMCPJSON(line string) bool {
+	return strings.HasPrefix(line, "{") || strings.HasPrefix(line, "[")
+}
+
 func newScriptContext() (*Script, error) {
 	workingDir, err := os.Getwd()
 	if err != nil {
@@ -274,9 +409,8 @@ func newScriptContext() (*Script, error) {
 	}
 	return &Script{
 		dirs: []string{workingDir},
-		onErr: func(error) {
-		},
-		env: env,
+		env:  env,
+		ctx:  context.Background(),
 	}, nil
 }
 

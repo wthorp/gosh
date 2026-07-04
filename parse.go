@@ -10,10 +10,10 @@ import (
 // Gosh executes programs directly instead of through a shell. Shell control
 // operators are therefore rejected here so routed CLI commands stay explicit.
 func SplitArgs(input string) ([]string, error) {
+	runes := []rune(strings.TrimSpace(input))
 	var args []string
 	var current strings.Builder
 	var quote rune
-	escaped := false
 	argStarted := false
 
 	flush := func() {
@@ -24,16 +24,37 @@ func SplitArgs(input string) ([]string, error) {
 		}
 	}
 
-	for _, ch := range strings.TrimSpace(input) {
-		if escaped {
-			current.WriteRune(ch)
-			argStarted = true
-			escaped = false
-			continue
-		}
+	for i := 0; i < len(runes); i++ {
+		ch := runes[i]
 
 		if ch == '\\' {
-			escaped = true
+			if i+1 >= len(runes) {
+				current.WriteRune('\\')
+				argStarted = true
+				continue
+			}
+
+			next := runes[i+1]
+			if quote != 0 {
+				if next == quote || next == '\\' {
+					current.WriteRune(next)
+					argStarted = true
+					i++
+					continue
+				}
+				current.WriteRune('\\')
+				argStarted = true
+				continue
+			}
+
+			if isEscapableDirectArgRune(next) {
+				current.WriteRune(next)
+				argStarted = true
+				i++
+				continue
+			}
+
+			current.WriteRune('\\')
 			argStarted = true
 			continue
 		}
@@ -62,13 +83,19 @@ func SplitArgs(input string) ([]string, error) {
 		}
 	}
 
-	if escaped {
-		current.WriteRune('\\')
-	}
 	if quote != 0 {
 		return nil, fmt.Errorf("unterminated quote")
 	}
 
 	flush()
 	return args, nil
+}
+
+func isEscapableDirectArgRune(ch rune) bool {
+	switch ch {
+	case '\'', '"', '\\', ' ', '\t', '\n', '\r', '|', ';', '&', '<', '>', '`':
+		return true
+	default:
+		return false
+	}
 }

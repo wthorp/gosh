@@ -123,6 +123,9 @@ func tools(includeHidden bool) []ToolInfo {
 		if !includeHidden && !call.Exported {
 			continue
 		}
+		if !call.Tool.Structured && !legacyCallSupported(call.Func.Type()) {
+			continue
+		}
 		info := ToolInfo{
 			ToolSpec:    call.Tool,
 			InputSchema: call.Tool.inputSchema(),
@@ -135,17 +138,18 @@ func tools(includeHidden bool) []ToolInfo {
 	return out
 }
 
-func minimalToolSpec(name string, rv reflect.Value, exported bool, includeLegacyInput bool) ToolSpec {
-	spec := ToolSpec{
+func minimalToolSpec(name string, exported bool) ToolSpec {
+	return ToolSpec{
 		Name:       name,
 		Risk:       commandRisk(name, nil),
 		Exported:   exported,
 		Structured: false,
 	}
+}
 
-	paramTypes := reflectedParamTypes(rv.Type())
-	if !includeLegacyInput || len(paramTypes) == 0 {
-		return spec
+func ensureLegacyInputParam(spec *ToolSpec, rt reflect.Type) {
+	if spec.Structured || len(spec.Params) > 0 || !legacyCallAcceptsRawInput(rt) {
+		return
 	}
 
 	// Backward-compatible commands keep receiving raw input, but the MCP schema
@@ -155,7 +159,50 @@ func minimalToolSpec(name string, rv reflect.Value, exported bool, includeLegacy
 		Type:     "string",
 		Required: false,
 	}}
-	return spec
+}
+
+type legacyCallKind int
+
+const (
+	legacyUnsupported legacyCallKind = iota
+	legacyNoArgs
+	legacyRawInput
+	legacyScriptOnly
+	legacyScriptRawInput
+)
+
+func classifyLegacyCall(rt reflect.Type) legacyCallKind {
+	if rt.NumIn() == 0 {
+		return legacyNoArgs
+	}
+	if rt.In(0) == reflect.TypeOf(&Script{}) {
+		switch rt.NumIn() {
+		case 1:
+			return legacyScriptOnly
+		case 2:
+			if rt.In(1).Kind() == reflect.String {
+				return legacyScriptRawInput
+			}
+		}
+		return legacyUnsupported
+	}
+	if rt.NumIn() == 1 && rt.In(0).Kind() == reflect.String {
+		return legacyRawInput
+	}
+	return legacyUnsupported
+}
+
+func legacyCallSupported(rt reflect.Type) bool {
+	return classifyLegacyCall(rt) != legacyUnsupported
+}
+
+func legacyCallAcceptsRawInput(rt reflect.Type) bool {
+	switch classifyLegacyCall(rt) {
+	case legacyRawInput, legacyScriptRawInput:
+		return true
+	default:
+		return false
+	}
 }
 
 func reflectedParamTypes(rt reflect.Type) []reflect.Type {

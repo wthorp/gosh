@@ -59,6 +59,10 @@ type Policy struct {
 	// routing them. Gosh commands are still classified with risk, but are not
 	// blocked by this policy because callers may attach their own approval flow.
 	RejectHighRiskExternal bool
+
+	// MaxExternalRisk rejects external commands above the provided risk level.
+	// Leave it empty to allow any risk level that is not otherwise rejected.
+	MaxExternalRisk RiskLevel
 }
 
 // DefaultPolicy preserves Gosh's historical behavior: registered commands and
@@ -74,6 +78,7 @@ func SafePolicy() Policy {
 		AllowExternal:          false,
 		AllowedExternal:        []string{"cat", "git", "ls", "pwd", "rg", "wc"},
 		RejectHighRiskExternal: true,
+		MaxExternalRisk:        RiskLow,
 	}
 }
 
@@ -127,7 +132,7 @@ func ResolveWithPolicy(input string, policy Policy) RouteResult {
 	command := args[0]
 	rest := args[1:]
 	if call, ok := Calls[strings.ToLower(command)]; ok {
-		validation := validateToolArgs(call.Tool, rest)
+		validation := validateCallArgs(call, rest)
 		if !validation.Valid {
 			return RouteResult{
 				Kind:             RouteRejected,
@@ -184,6 +189,19 @@ func ResolveWithPolicy(input string, policy Policy) RouteResult {
 				Reason:     "high-risk external command rejected by policy",
 			}
 		}
+		if policy.MaxExternalRisk != "" && riskRank(risk) > riskRank(policy.MaxExternalRisk) {
+			return RouteResult{
+				Kind:       RouteRejected,
+				Input:      input,
+				Command:    command,
+				Args:       rest,
+				Executable: executable,
+				Confidence: 1,
+				Valid:      false,
+				Risk:       risk,
+				Reason:     fmt.Sprintf("external command risk %s exceeds policy max %s", risk, policy.MaxExternalRisk),
+			}
+		}
 		return RouteResult{
 			Kind:       RouteExternalCLI,
 			Input:      input,
@@ -215,29 +233,28 @@ type AIBackend interface {
 
 // RouteOptions configures RouteWithOptions.
 type RouteOptions struct {
-	Policy  Policy
-	Backend AIBackend
-	Stdout  io.Writer
-	Stderr  io.Writer
+	Policy    Policy
+	PolicySet bool
+	Backend   AIBackend
+	Stdout    io.Writer
+	Stderr    io.Writer
 }
 
 // Route routes one input line. Deterministic commands run directly; unmatched
 // inputs are sent to the configured AI backend.
 func Route(input string) error {
-	return RouteWithOptions(context.Background(), input, RouteOptions{})
+	return RouteWithOptions(context.Background(), input, RouteOptions{Policy: DefaultPolicy()})
 }
 
 // RouteWithOptions routes one input line with explicit options.
 func RouteWithOptions(ctx context.Context, input string, options RouteOptions) error {
-	policy := options.Policy
-	if !policy.configured() {
-		policy = DefaultPolicy()
+	if !options.PolicySet && policyIsZero(options.Policy) {
+		options.Policy = DefaultPolicy()
 	}
-
-	result := ResolveWithPolicy(input, policy)
+	result := ResolveWithPolicy(input, options.Policy)
 	switch result.Kind {
 	case RouteGoshCommand, RouteExternalCLI:
-		return RunE(input)
+		return runEContext(ctx, input)
 	case RouteNeedsAI:
 		backend := options.Backend
 		if backend == nil {
@@ -252,13 +269,6 @@ func RouteWithOptions(ctx context.Context, input string, options RouteOptions) e
 	default:
 		return fmt.Errorf("unknown route kind: %s", result.Kind)
 	}
-}
-
-func (p Policy) configured() bool {
-	return p.AllowExternal ||
-		len(p.AllowedExternal) > 0 ||
-		len(p.DeniedExternal) > 0 ||
-		p.RejectHighRiskExternal
 }
 
 func (p Policy) externalAllowed(command string) bool {
@@ -277,6 +287,14 @@ func (p Policy) externalAllowed(command string) bool {
 		return false
 	}
 	return p.AllowExternal
+}
+
+func policyIsZero(policy Policy) bool {
+	return !policy.AllowExternal &&
+		len(policy.AllowedExternal) == 0 &&
+		len(policy.DeniedExternal) == 0 &&
+		!policy.RejectHighRiskExternal &&
+		policy.MaxExternalRisk == ""
 }
 
 func commandRisk(command string, args []string) RiskLevel {
@@ -300,7 +318,9 @@ func commandRisk(command string, args []string) RiskLevel {
 		return sedRisk(args)
 	case "git":
 		return gitRisk(args)
-	case "go", "npm", "yarn", "pnpm", "make":
+	case "go":
+		return goRisk(args)
+	case "npm", "yarn", "pnpm", "make":
 		return buildToolRisk(args)
 	default:
 		return RiskLow
@@ -312,13 +332,33 @@ func gitRisk(args []string) RiskLevel {
 		return RiskLow
 	}
 	switch strings.ToLower(args[0]) {
-	case "status", "diff", "log", "show", "branch", "rev-parse":
+	case "status", "diff", "log", "show", "rev-parse":
 		return RiskLow
-	case "push", "commit", "merge", "rebase", "checkout", "switch", "reset", "clean":
+	case "branch":
+		return gitBranchRisk(args[1:])
+	case "push", "commit", "merge", "rebase", "checkout", "switch", "reset", "clean", "apply", "am", "stash", "cherry-pick", "revert":
 		return RiskHigh
 	default:
 		return RiskMedium
 	}
+}
+
+func gitBranchRisk(args []string) RiskLevel {
+	if len(args) == 0 {
+		return RiskLow
+	}
+	for _, arg := range args {
+		switch strings.ToLower(arg) {
+		case "-d", "-D", "--delete", "-m", "-M", "--move", "-c", "-C", "--copy", "--set-upstream-to", "--unset-upstream":
+			return RiskHigh
+		}
+	}
+	for _, arg := range args {
+		if !strings.HasPrefix(arg, "-") {
+			return RiskMedium
+		}
+	}
+	return RiskLow
 }
 
 func findRisk(args []string) RiskLevel {
@@ -334,11 +374,25 @@ func findRisk(args []string) RiskLevel {
 func sedRisk(args []string) RiskLevel {
 	for _, arg := range args {
 		lower := strings.ToLower(arg)
-		if lower == "-i" || strings.HasPrefix(lower, "-i.") || strings.HasPrefix(lower, "-i") {
+		if lower == "-i" || strings.HasPrefix(lower, "-i") || lower == "--in-place" || strings.HasPrefix(lower, "--in-place=") {
 			return RiskHigh
 		}
 	}
-	return RiskMedium
+	return RiskLow
+}
+
+func goRisk(args []string) RiskLevel {
+	if len(args) == 0 {
+		return RiskLow
+	}
+	switch strings.ToLower(args[0]) {
+	case "version", "env", "list":
+		return RiskLow
+	case "build", "run", "test", "generate", "install", "mod", "work":
+		return RiskHigh
+	default:
+		return RiskMedium
+	}
 }
 
 func buildToolRisk(args []string) RiskLevel {
@@ -355,6 +409,17 @@ func buildToolRisk(args []string) RiskLevel {
 		return RiskHigh
 	default:
 		return RiskMedium
+	}
+}
+
+func riskRank(level RiskLevel) int {
+	switch level {
+	case RiskHigh:
+		return 2
+	case RiskMedium:
+		return 1
+	default:
+		return 0
 	}
 }
 

@@ -1,10 +1,13 @@
 package gosh
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -17,12 +20,12 @@ var _ = Tool("GoshMCPOkNoOutputTest", func() {})
 
 func TestServeMCPErrorsNotificationsAndPing(t *testing.T) {
 	input := strings.Join([]string{
-		`not-json`,
-		`{"jsonrpc":"2.0","method":"notifications/unknown"}`,
-		`{"jsonrpc":"2.0","id":1,"method":"ping"}`,
-		`{"jsonrpc":"2.0","id":2,"method":"unknown"}`,
-		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":[]}`,
-	}, "\n")
+		mcpFrame(`not-json`),
+		mcpFrame(`{"jsonrpc":"2.0","method":"notifications/unknown"}`),
+		mcpFrame(`{"jsonrpc":"2.0","id":1,"method":"ping"}`),
+		mcpFrame(`{"jsonrpc":"2.0","id":2,"method":"unknown"}`),
+		mcpFrame(`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":[]}`),
+	}, "")
 
 	var out bytes.Buffer
 	var logs bytes.Buffer
@@ -33,7 +36,7 @@ func TestServeMCPErrorsNotificationsAndPing(t *testing.T) {
 		t.Fatalf("expected notification log, got %q", logs.String())
 	}
 
-	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	lines := decodeMCPMessages(t, out.String())
 	if len(lines) != 4 {
 		t.Fatalf("responses = %d\n%s", len(lines), out.String())
 	}
@@ -47,10 +50,11 @@ func TestServeMCPErrorsNotificationsAndPing(t *testing.T) {
 
 func TestServeMCPInvalidRequestUsesNullID(t *testing.T) {
 	var out bytes.Buffer
-	if err := ServeMCP(strings.NewReader(`{"jsonrpc":"1.0","method":""}`+"\n"), &out, nil); err != nil {
+	if err := ServeMCP(strings.NewReader(mcpFrame(`{"jsonrpc":"1.0","method":""}`)), &out, nil); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), `"id":null`) || !strings.Contains(out.String(), "Invalid Request") {
+	messages := decodeMCPMessages(t, out.String())
+	if len(messages) != 1 || !strings.Contains(messages[0], `"id":null`) || !strings.Contains(messages[0], "Invalid Request") {
 		t.Fatalf("invalid request output = %q", out.String())
 	}
 }
@@ -112,7 +116,13 @@ func TestCallMCPToolErrorsAndOkDefaultOutput(t *testing.T) {
 }
 
 func TestMCPArgsAndArgumentString(t *testing.T) {
-	raw, argv, err := mcpArgs(ToolSpec{Structured: false}, map[string]interface{}{"input": 123})
+	raw, argv, err := mcpArgs(ToolSpec{
+		Structured: false,
+		Params: []ParamSpec{{
+			Name: "input",
+			Type: "string",
+		}},
+	}, map[string]interface{}{"input": 123})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,14 +141,30 @@ func TestMCPArgsAndArgumentString(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(argv) != 1 || argv[0] != "true" {
+	if len(argv) != 2 || argv[0] != "true" || argv[1] != "" {
 		t.Fatalf("argv = %#v", argv)
 	}
 	if _, _, err := mcpArgs(tool, map[string]interface{}{}); err == nil {
 		t.Fatalf("expected missing required arg")
 	}
+	if _, _, err := mcpArgs(tool, map[string]interface{}{"enabled": true, "extra": "nope"}); err == nil {
+		t.Fatalf("expected unknown arg error")
+	}
+	if _, _, err := mcpArgs(ToolSpec{}, map[string]interface{}{"input": "nope"}); err == nil {
+		t.Fatalf("expected unknown legacy arg error without schema")
+	}
 	if argumentString(false) != "false" || argumentString(1.5) != "1.5" {
 		t.Fatalf("unexpected argumentString results")
+	}
+}
+
+func TestCallMCPToolRejectsUnknownArguments(t *testing.T) {
+	if _, rpcErr := callMCPTool("GoshTypedDeployTest", map[string]interface{}{
+		"env":        "staging",
+		"count":      2,
+		"unexpected": true,
+	}); rpcErr == nil {
+		t.Fatalf("expected invalid arguments rpc error")
 	}
 }
 
@@ -155,9 +181,11 @@ func TestCaptureStdoutPanicsAndWriteMCPError(t *testing.T) {
 
 func TestWriteMCPError(t *testing.T) {
 	var out bytes.Buffer
-	encoder := json.NewEncoder(&out)
-	writeMCPError(encoder, json.RawMessage(`"abc"`), -32600, "bad", map[string]string{"why": "test"})
-	if !strings.Contains(out.String(), `"id":"abc"`) || !strings.Contains(out.String(), `"why":"test"`) {
+	if err := writeMCPError(&out, json.RawMessage(`"abc"`), -32600, "bad", map[string]string{"why": "test"}); err != nil {
+		t.Fatal(err)
+	}
+	messages := decodeMCPMessages(t, out.String())
+	if len(messages) != 1 || !strings.Contains(messages[0], `"id":"abc"`) || !strings.Contains(messages[0], `"why":"test"`) {
 		t.Fatalf("error response = %q", out.String())
 	}
 }
@@ -169,5 +197,26 @@ func TestIDOrNull(t *testing.T) {
 	id := json.RawMessage(`"id"`)
 	if !reflect.DeepEqual((mcpRequest{ID: id}).IDOrNull(), id) {
 		t.Fatalf("id was not preserved")
+	}
+}
+
+func mcpFrame(payload string) string {
+	return "Content-Length: " + strconv.Itoa(len(payload)) + "\r\n\r\n" + payload
+}
+
+func decodeMCPMessages(t *testing.T, wire string) []string {
+	t.Helper()
+
+	reader := bufio.NewReader(strings.NewReader(wire))
+	var messages []string
+	for {
+		payload, err := readMCPMessage(reader)
+		if err == io.EOF {
+			return messages
+		}
+		if err != nil {
+			t.Fatalf("failed to decode MCP message: %v", err)
+		}
+		messages = append(messages, string(payload))
 	}
 }

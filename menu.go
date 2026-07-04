@@ -11,19 +11,23 @@ import (
 
 // MenuOptions configures MenuWithOptions.
 type MenuOptions struct {
-	Policy  Policy
-	Backend AIBackend
-	Stdout  io.Writer
-	Stderr  io.Writer
+	Policy    Policy
+	PolicySet bool
+	Backend   AIBackend
+	Stdout    io.Writer
+	Stderr    io.Writer
 }
 
 // Menu displays usage information or invokes an exported command
 func Menu() {
-	MenuWithOptions(MenuOptions{})
+	MenuWithOptions(MenuOptions{Policy: DefaultPolicy()})
 }
 
 // MenuWithOptions displays usage information, resolves input, or routes it.
 func MenuWithOptions(options MenuOptions) {
+	if !options.PolicySet && policyIsZero(options.Policy) {
+		options.Policy = DefaultPolicy()
+	}
 	// show usage information if no command specified
 	if len(os.Args) <= 1 {
 		// if goSrc := determineGoFile(); goSrc != "" {
@@ -34,31 +38,39 @@ func MenuWithOptions(options MenuOptions) {
 		return
 	}
 
-	policy := options.Policy
-	if !policy.configured() {
-		policy = DefaultPolicy()
-	}
-
 	if os.Args[1] == "--resolve" {
 		input := strings.Join(os.Args[2:], " ")
-		result := ResolveWithPolicy(input, policy)
+		result := ResolveWithPolicy(input, options.Policy)
 		if err := writeRouteJSON(defaultWriter(options.Stdout, os.Stdout), result); err != nil {
 			defaultErr(err)
 		}
-	} else if os.Args[1] == "tools" && len(os.Args) > 2 && os.Args[2] == "--json" {
-		if err := writeJSON(defaultWriter(options.Stdout, os.Stdout), Tools()); err != nil {
-			defaultErr(err)
-		}
-	} else if os.Args[1] == "serve" && len(os.Args) > 2 && os.Args[2] == "mcp" {
-		if err := ServeMCP(os.Stdin, defaultWriter(options.Stdout, os.Stdout), defaultWriter(options.Stderr, os.Stderr)); err != nil {
-			defaultErr(err)
-		}
 	} else {
+		if os.Args[1] == "tools" {
+			if len(os.Args) == 3 && os.Args[2] == "--json" {
+				if err := writeJSON(defaultWriter(options.Stdout, os.Stdout), Tools()); err != nil {
+					defaultErr(err)
+				}
+				return
+			}
+			defaultErr(fmt.Errorf("invalid meta command: expected `tools --json`"))
+			return
+		}
+		if os.Args[1] == "serve" {
+			if len(os.Args) == 3 && os.Args[2] == "mcp" {
+				if err := ServeMCP(os.Stdin, defaultWriter(options.Stdout, os.Stdout), defaultWriter(options.Stderr, os.Stderr)); err != nil {
+					defaultErr(err)
+				}
+				return
+			}
+			defaultErr(fmt.Errorf("invalid meta command: expected `serve mcp`"))
+			return
+		}
 		err := RouteWithOptions(context.Background(), strings.Join(os.Args[1:], " "), RouteOptions{
-			Policy:  policy,
-			Backend: options.Backend,
-			Stdout:  options.Stdout,
-			Stderr:  options.Stderr,
+			Policy:    options.Policy,
+			PolicySet: true,
+			Backend:   options.Backend,
+			Stdout:    options.Stdout,
+			Stderr:    options.Stderr,
 		})
 		if err != nil {
 			defaultErr(err)
@@ -73,6 +85,9 @@ func showUsageFromReflection(w io.Writer) {
 	writef(w, "Usage: 'go run %s.go' [command]:\n", filepath.Base(exe))
 	for _, c := range Calls {
 		if c.Exported {
+			if !c.Tool.Structured && !legacyCallSupported(c.Func.Type()) {
+				continue
+			}
 			writef(w, "    %s ", c.Name)
 			rt := c.Func.Type()
 			for p := 0; p < rt.NumIn(); p++ {
