@@ -2,7 +2,7 @@
 
 GO_PACKAGES ?= ./...
 GO_FILES := $(shell find . -type f -name '*.go' -not -path './vendor/*')
-PRETTIER_FILES := README.md .golangci.yml .github/workflows/checks.yml .prettierrc.json
+PRETTIER_FILES := README.md .golangci.yml .github/workflows/checks.yml .prettierrc.json lefthook.yml
 COVERAGE_PROFILE ?= coverage.out
 COVERAGE_MIN ?= 80.0
 

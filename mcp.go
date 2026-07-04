@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -67,7 +68,7 @@ func ServeMCPWithOptions(in io.Reader, out io.Writer, logs io.Writer, options MC
 
 	for {
 		payload, err := readMCPMessage(reader)
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			return nil
 		}
 		if err != nil {
@@ -333,13 +334,13 @@ func readMCPMessage(reader *bufio.Reader) ([]byte, error) {
 		line, err := reader.ReadString('\n')
 		if err != nil {
 			trimmed := strings.TrimSpace(line)
-			if err == io.EOF && trimmed == "" {
+			if errors.Is(err, io.EOF) && trimmed == "" {
 				return nil, io.EOF
 			}
-			if err == io.EOF && looksLikeMCPJSON(trimmed) {
+			if errors.Is(err, io.EOF) && looksLikeMCPJSON(trimmed) {
 				return []byte(trimmed), nil
 			}
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				return nil, io.ErrUnexpectedEOF
 			}
 			return nil, err

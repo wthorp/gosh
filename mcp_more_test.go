@@ -211,7 +211,7 @@ func decodeMCPMessages(t *testing.T, wire string) []string {
 	var messages []string
 	for {
 		payload, err := readMCPMessage(reader)
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			return messages
 		}
 		if err != nil {
