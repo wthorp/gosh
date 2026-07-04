@@ -99,9 +99,9 @@ hidden from the CLI and MCP tool list.
 This keeps known commands deterministic and only uses AI when the input is not already a concrete
 Gosh or CLI command.
 
-Shell control operators such as `|`, `;`, `&`, `<`, `>`, and backticks are not directly routed. Wrap
-complex shell behavior in an explicit Gosh command or pass it through an intentional command such as
-`sh -c`.
+Routed input must be a single command line. Shell control operators such as `|`, `;`, `&`, `<`, `>`,
+backticks, and embedded newlines are not directly routed. Wrap complex shell behavior in an explicit
+Gosh command or pass it through an intentional command such as `sh -c`.
 
 To classify input without executing it:
 
@@ -155,6 +155,21 @@ captured and returned as text content so stdout remains reserved for MCP JSON-RP
 
 MCP tools are generated from the same `Tool`, `Cmd`, and `Register` registry. `Tool` commands get
 typed schemas. Older commands get a simple optional `input` string field.
+
+Tools marked `RequiresApproval` or `RiskHigh` are listed with destructive annotations, but
+`ServeMCP` rejects calls to them by default. If your MCP host already has a human confirmation flow,
+call `ServeMCPWithOptions` and explicitly enable `AllowApprovalRequired` and/or `AllowHighRisk`.
+
+## Security Model
+
+Gosh routes direct commands without invoking a shell. That means shell pipelines, redirection,
+backgrounding, command substitution, and multiline input are rejected at the routing layer instead
+of being interpreted implicitly.
+
+`SafePolicy` is intentionally narrow: it permits common inspection commands such as `git status`,
+`ls`, `pwd`, `rg`, `cat`, and `wc`, while rejecting high-risk external commands. It is a routing
+policy, not a sandbox; callers that need stronger isolation should still run Gosh inside their own
+process, filesystem, or container boundary.
 
 ## Codex Fallback
 

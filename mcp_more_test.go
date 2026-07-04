@@ -65,12 +65,32 @@ func TestCallMCPToolErrorsAndOkDefaultOutput(t *testing.T) {
 	if _, rpcErr := callMCPTool("GoshTypedDeployTest", map[string]interface{}{"env": "dev", "count": 1}); rpcErr == nil {
 		t.Fatalf("expected invalid enum error")
 	}
+	if _, rpcErr := callMCPTool("GoshTypedDeployTest", map[string]interface{}{"env": "prod", "count": 1}); rpcErr == nil {
+		t.Fatalf("expected approval-required tool to be blocked by default")
+	}
 
-	result, rpcErr := callMCPTool("GoshMCPErrorTest", nil)
+	typedToolEnv = ""
+	typedToolCount = 0
+	result, rpcErr := callMCPToolWithOptions("GoshTypedDeployTest", map[string]interface{}{"env": "prod", "count": 1}, MCPOptions{
+		AllowApprovalRequired: true,
+		AllowHighRisk:         true,
+	})
+	if rpcErr != nil {
+		t.Fatalf("unexpected rpc error with explicit options: %+v", rpcErr)
+	}
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if typedToolEnv != "prod" || typedToolCount != 1 || !strings.Contains(string(encoded), `"isError":false`) {
+		t.Fatalf("tool did not run with options; env=%q count=%d result=%s", typedToolEnv, typedToolCount, encoded)
+	}
+
+	result, rpcErr = callMCPTool("GoshMCPErrorTest", nil)
 	if rpcErr != nil {
 		t.Fatalf("unexpected rpc error: %+v", rpcErr)
 	}
-	encoded, err := json.Marshal(result)
+	encoded, err = json.Marshal(result)
 	if err != nil {
 		t.Fatal(err)
 	}

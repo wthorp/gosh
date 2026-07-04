@@ -39,8 +39,24 @@ type mcpTool struct {
 	Annotations map[string]interface{} `json:"annotations,omitempty"`
 }
 
+// MCPOptions controls which registered tools may be invoked through MCP.
+type MCPOptions struct {
+	// AllowApprovalRequired permits tools marked RequiresApproval to run through
+	// MCP. Leave this false unless the hosting client has its own confirmation
+	// flow before calling the tool.
+	AllowApprovalRequired bool
+
+	// AllowHighRisk permits tools marked RiskHigh to run through MCP.
+	AllowHighRisk bool
+}
+
 // ServeMCP serves exported Gosh tools over the MCP stdio transport.
 func ServeMCP(in io.Reader, out io.Writer, logs io.Writer) error {
+	return ServeMCPWithOptions(in, out, logs, MCPOptions{})
+}
+
+// ServeMCPWithOptions serves exported Gosh tools over MCP with explicit policy.
+func ServeMCPWithOptions(in io.Reader, out io.Writer, logs io.Writer, options MCPOptions) error {
 	if logs == nil {
 		logs = os.Stderr
 	}
@@ -69,7 +85,7 @@ func ServeMCP(in io.Reader, out io.Writer, logs io.Writer) error {
 			continue
 		}
 
-		result, rpcErr := handleMCPRequest(req)
+		result, rpcErr := handleMCPRequest(req, options)
 		if rpcErr != nil {
 			writeMCPError(encoder, req.ID, rpcErr.Code, rpcErr.Message, rpcErr.Data)
 			continue
@@ -94,7 +110,7 @@ func handleMCPNotification(req mcpRequest, logs io.Writer) {
 	}
 }
 
-func handleMCPRequest(req mcpRequest) (interface{}, *mcpError) {
+func handleMCPRequest(req mcpRequest, options MCPOptions) (interface{}, *mcpError) {
 	switch req.Method {
 	case "initialize":
 		return map[string]interface{}{
@@ -109,7 +125,7 @@ func handleMCPRequest(req mcpRequest) (interface{}, *mcpError) {
 				"title":   "Gosh Tool Server",
 				"version": "0.0.0",
 			},
-			"instructions": "Use these tools for deterministic Gosh commands. Tools marked destructive or requiring approval should be confirmed with the user before invocation.",
+			"instructions": "Use these tools for deterministic Gosh commands. Tools marked destructive or requiring approval are rejected unless the Gosh MCP host explicitly enables them after its own confirmation flow.",
 		}, nil
 	case "ping":
 		return map[string]interface{}{}, nil
@@ -123,7 +139,7 @@ func handleMCPRequest(req mcpRequest) (interface{}, *mcpError) {
 		if err := json.Unmarshal(req.Params, &params); err != nil {
 			return nil, &mcpError{Code: -32602, Message: "Invalid params", Data: err.Error()}
 		}
-		return callMCPTool(params.Name, params.Arguments)
+		return callMCPToolWithOptions(params.Name, params.Arguments, options)
 	default:
 		return nil, &mcpError{Code: -32601, Message: "Method not found", Data: req.Method}
 	}
@@ -156,6 +172,10 @@ func mcpTools() []mcpTool {
 }
 
 func callMCPTool(name string, arguments map[string]interface{}) (interface{}, *mcpError) {
+	return callMCPToolWithOptions(name, arguments, MCPOptions{})
+}
+
+func callMCPToolWithOptions(name string, arguments map[string]interface{}, options MCPOptions) (interface{}, *mcpError) {
 	call, ok := Calls[strings.ToLower(name)]
 	if !ok || !call.Exported {
 		return nil, &mcpError{Code: -32602, Message: "Unknown tool", Data: name}
@@ -170,6 +190,12 @@ func callMCPTool(name string, arguments map[string]interface{}) (interface{}, *m
 	}
 	if validation := validateToolArgs(call.Tool, argv); !validation.Valid {
 		return nil, &mcpError{Code: -32602, Message: "Invalid arguments", Data: validation.Errors}
+	}
+	if call.Tool.RequiresApproval && !options.AllowApprovalRequired {
+		return nil, &mcpError{Code: -32000, Message: "Tool requires approval", Data: name}
+	}
+	if call.Tool.Risk == RiskHigh && !options.AllowHighRisk {
+		return nil, &mcpError{Code: -32000, Message: "High-risk tool disabled", Data: name}
 	}
 
 	output, callErr := captureStdout(func() error {

@@ -68,11 +68,11 @@ func DefaultPolicy() Policy {
 	return Policy{AllowExternal: true}
 }
 
-// SafePolicy routes only common read-only commands and rejects high-risk ones.
+// SafePolicy routes only common inspection commands and rejects high-risk ones.
 func SafePolicy() Policy {
 	return Policy{
 		AllowExternal:          false,
-		AllowedExternal:        []string{"cat", "find", "git", "go", "ls", "pwd", "rg", "sed", "wc"},
+		AllowedExternal:        []string{"cat", "git", "ls", "pwd", "rg", "wc"},
 		RejectHighRiskExternal: true,
 	}
 }
@@ -92,6 +92,15 @@ func ResolveWithPolicy(input string, policy Policy) RouteResult {
 			Confidence: 1,
 			Valid:      false,
 			Reason:     "empty input",
+		}
+	}
+	if strings.ContainsAny(input, "\n\r") {
+		return RouteResult{
+			Kind:       RouteRejected,
+			Input:      input,
+			Confidence: 1,
+			Valid:      false,
+			Reason:     "route input must be a single line",
 		}
 	}
 
@@ -285,6 +294,10 @@ func commandRisk(command string, args []string) RiskLevel {
 		return RiskHigh
 	case "curl", "wget", "ssh", "scp", "rsync", "docker", "kubectl", "terraform":
 		return RiskMedium
+	case "find":
+		return findRisk(args)
+	case "sed":
+		return sedRisk(args)
 	case "git":
 		return gitRisk(args)
 	case "go", "npm", "yarn", "pnpm", "make":
@@ -308,14 +321,36 @@ func gitRisk(args []string) RiskLevel {
 	}
 }
 
+func findRisk(args []string) RiskLevel {
+	for _, arg := range args {
+		switch strings.ToLower(arg) {
+		case "-delete", "-exec", "-execdir", "-ok", "-okdir":
+			return RiskHigh
+		}
+	}
+	return RiskLow
+}
+
+func sedRisk(args []string) RiskLevel {
+	for _, arg := range args {
+		lower := strings.ToLower(arg)
+		if lower == "-i" || strings.HasPrefix(lower, "-i.") || strings.HasPrefix(lower, "-i") {
+			return RiskHigh
+		}
+	}
+	return RiskMedium
+}
+
 func buildToolRisk(args []string) RiskLevel {
 	if len(args) == 0 {
 		return RiskLow
 	}
 	first := strings.ToLower(args[0])
 	switch first {
-	case "version", "env", "list", "test":
+	case "version", "env", "list":
 		return RiskLow
+	case "test":
+		return RiskMedium
 	case "install", "add", "remove", "publish", "deploy":
 		return RiskHigh
 	default:

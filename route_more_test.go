@@ -23,6 +23,10 @@ func TestSafePolicyAndRiskBranches(t *testing.T) {
 	if high.Kind != RouteRejected || high.Risk != RiskHigh {
 		t.Fatalf("git reset route = %+v", high)
 	}
+	disallowed := ResolveWithPolicy("go version", policy)
+	if disallowed.Kind != RouteRejected {
+		t.Fatalf("go version route = %+v", disallowed)
+	}
 	medium := ResolveWithPolicy("git fetch", DefaultPolicy())
 	if medium.Kind != RouteExternalCLI || medium.Risk != RiskMedium {
 		t.Fatalf("git fetch route = %+v", medium)
@@ -35,7 +39,10 @@ func TestSafePolicyAndRiskBranches(t *testing.T) {
 	if commandRisk("rm", []string{"file"}) != RiskHigh ||
 		commandRisk("curl", []string{"https://example.com"}) != RiskMedium ||
 		commandRisk("go", []string{"install"}) != RiskHigh ||
+		commandRisk("go", []string{"test"}) != RiskMedium ||
 		commandRisk("go", []string{"build"}) != RiskMedium ||
+		commandRisk("find", []string{".", "-delete"}) != RiskHigh ||
+		commandRisk("sed", []string{"-i", "s/a/b/", "file"}) != RiskHigh ||
 		commandRisk("unknown", []string{"--force"}) != RiskHigh {
 		t.Fatalf("unexpected command risk result")
 	}
@@ -47,6 +54,29 @@ func TestRouteFunctionAndRejectedInput(t *testing.T) {
 	}
 	if err := Route("echo nope | wc -l"); err == nil {
 		t.Fatalf("expected rejected route")
+	}
+}
+
+func TestRouteRejectsMultilineInputBeforeExecution(t *testing.T) {
+	target := "route-newline-probe"
+	if err := os.WriteFile(target, []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Remove(target) }()
+
+	err := RouteWithOptions(context.Background(), "git status\nrm "+target, RouteOptions{
+		Policy: Policy{AllowExternal: true, RejectHighRiskExternal: true},
+	})
+	if err == nil || !strings.Contains(err.Error(), "single line") {
+		t.Fatalf("RouteWithOptions error = %v", err)
+	}
+	if _, err := os.Stat(target); err != nil {
+		t.Fatalf("target should not be touched: %v", err)
+	}
+
+	result := Resolve("git status\nrm " + target)
+	if result.Kind != RouteRejected || !strings.Contains(result.Reason, "single line") {
+		t.Fatalf("resolve result = %+v", result)
 	}
 }
 
