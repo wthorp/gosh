@@ -26,20 +26,6 @@ gosh.Run(`
 Each script has its own working directory stack and environment map, so concurrent scripts don't
 fight over process-wide `cd` or `set` state.
 
-For multiline workflows that should fall back to Codex when a line is not a known Gosh command or
-CLI executable, use `RunAgentic`:
-
-```
-gosh.RunAgentic(`
-	set yinz = World
-	display hello ${yinz} on the screen
-	git diff
-`)
-```
-
-Variables are expanded before fallback, so Codex receives `display hello World on the screen`.
-Regular `Run` stays strict; typos still fail instead of silently going to AI.
-
 ## GoSh Commands
 
 GoSh has the following shell-like commands built in, for use from scripts:

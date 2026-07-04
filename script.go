@@ -1,7 +1,6 @@
 package gosh
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -16,12 +15,10 @@ var defaultErr = func(err error) {
 
 // Script represents an execution script context.
 type Script struct {
-	cmds          []string
-	dirs          []string
-	onErr         func(error)
-	env           map[string]string
-	AgentFallback bool
-	Backend       AIBackend
+	cmds  []string
+	dirs  []string
+	onErr func(error)
+	env   map[string]string
 }
 
 // Run creates a new execution script context.
@@ -33,22 +30,6 @@ func Run(cmdScript string) {
 
 // RunE creates a new execution script context and returns the first error.
 func RunE(cmdScript string) error {
-	return runWithOptions(cmdScript, false, nil)
-}
-
-// RunAgentic creates a new execution script context with implicit AI fallback.
-func RunAgentic(cmdScript string) {
-	if err := RunAgenticE(cmdScript); err != nil {
-		defaultErr(err)
-	}
-}
-
-// RunAgenticE creates a new agentic execution script context and returns the first error.
-func RunAgenticE(cmdScript string) error {
-	return runWithOptions(cmdScript, true, nil)
-}
-
-func runWithOptions(cmdScript string, agentFallback bool, backend AIBackend) error {
 	workingDir, _ := os.Getwd()
 	env := make(map[string]string, len(os.Environ()))
 	for _, pair := range os.Environ() {
@@ -64,9 +45,7 @@ func runWithOptions(cmdScript string, agentFallback bool, backend AIBackend) err
 				firstErr = err
 			}
 		},
-		env:           env,
-		AgentFallback: agentFallback,
-		Backend:       backend,
+		env: env,
 	}
 	script.RunCmds()
 	return firstErr
@@ -115,28 +94,11 @@ func (s *Script) RunCmds() {
 			// run executable program
 			err := s.Exec(cmd)
 			if err != nil {
-				if s.AgentFallback {
-					if err := s.runAgentFallback(cmd); err != nil {
-						s.onErr(fmt.Errorf("error running AI fallback, line %d\n[%s]\n%w", lineNum, cmd, err))
-						return
-					}
-					continue
-				}
 				s.onErr(fmt.Errorf("error executing program, line %d\n[%s]\n%w", lineNum, cmd, err))
 				return
 			}
 		}
 	}
-}
-
-func (s *Script) runAgentFallback(input string) error {
-	backend := s.Backend
-	if backend == nil {
-		codex := DefaultCodexBackend()
-		codex.Dir = s.dirs[0]
-		backend = codex
-	}
-	return backend.Run(context.Background(), input)
 }
 
 // Exec runs a program on the operating system.

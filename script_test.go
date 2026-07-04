@@ -1,22 +1,11 @@
 package gosh
 
 import (
-	"context"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
-
-type scriptBackend struct {
-	inputs []string
-	err    error
-}
-
-func (b *scriptBackend) Run(_ context.Context, input string) error {
-	b.inputs = append(b.inputs, input)
-	return b.err
-}
 
 func testScript(dir string) *Script {
 	return &Script{
@@ -25,61 +14,6 @@ func testScript(dir string) *Script {
 			"PATH": os.Getenv("PATH"),
 		},
 		onErr: func(error) {},
-	}
-}
-
-func TestRunAgenticFallbackUsesExpandedInput(t *testing.T) {
-	dir := t.TempDir()
-	backend := &scriptBackend{}
-	var gotErr error
-	script := &Script{
-		cmds: []string{
-			"set yinz = World",
-			"display hello ${yinz} on the screen",
-			"echo after fallback",
-		},
-		dirs:          []string{dir},
-		env:           map[string]string{"PATH": os.Getenv("PATH")},
-		AgentFallback: true,
-		Backend:       backend,
-		onErr: func(err error) {
-			gotErr = err
-		},
-	}
-
-	output, err := captureStdout(func() error {
-		script.RunCmds()
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if gotErr != nil {
-		t.Fatalf("unexpected error: %v", gotErr)
-	}
-	if len(backend.inputs) != 1 || backend.inputs[0] != "display hello World on the screen" {
-		t.Fatalf("backend inputs = %#v", backend.inputs)
-	}
-	if !strings.Contains(output, "after fallback") {
-		t.Fatalf("script did not continue after fallback: %q", output)
-	}
-}
-
-func TestRunAgenticEAndStrictRunE(t *testing.T) {
-	fakeCodex := filepath.Join(t.TempDir(), "codex")
-	if err := os.WriteFile(fakeCodex, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("GOSH_CODEX_BIN", fakeCodex)
-
-	if err := RunAgenticE(`
-		set yinz = World
-		display hello ${yinz} on the screen
-	`); err != nil {
-		t.Fatalf("RunAgenticE returned error: %v", err)
-	}
-	if err := RunE("display hello World on the screen"); err == nil {
-		t.Fatalf("RunE should remain strict without agent fallback")
 	}
 }
 
